@@ -18,6 +18,7 @@ from langchain.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage
 from langgraph.graph import StateGraph, MessagesState, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.checkpoint.memory import MemorySaver
 
 from config import (
     LLM_MODEL,
@@ -96,6 +97,9 @@ class LogisticsAgent:
         self.retriever_tool = None
         if self.vector_store:
             self.retriever_tool = self._create_rag_tool()
+        
+        # Initialize checkpointer for thread-scoped memory (short-term memory)
+        self.checkpointer = MemorySaver()
         
         # Build the graph
         self.graph = self._build_graph()
@@ -306,41 +310,56 @@ SECURITY REQUIREMENTS (CRITICAL for enterprise use):
             "role": "system",
             "content": generate_query_system_prompt,
         }
-        # 사용자 질문 로깅
+        # 사용자 질문 로깅 (마지막 HumanMessage 사용)
         if self.enable_logging:
-            user_question = state["messages"][0].content if state["messages"] else "Unknown"
+            messages = state["messages"]
+            last_human_message = None
+            for msg in reversed(messages):
+                if isinstance(msg, HumanMessage):
+                    last_human_message = msg
+                    break
+            user_question = last_human_message.content if last_human_message else (messages[0].content if messages else "Unknown")
             logger.info("=" * 80)
             logger.info("📝 [USER QUESTION] 사용자 질문:")
             logger.info(f"질문: {user_question}")
             logger.info("=" * 80)
         
-        # Check if we have query results in the messages (after query execution)
-        # If so, we should format the answer, not generate a new query
-        has_query_results = False
-        # Look for tool messages from sql_db_query (actual query results)
-        for msg in reversed(state["messages"][-10:]):  # Check last 10 messages
+        # Check if we have query results AND if there's a new question after the results
+        # Strategy: Find the last HumanMessage and last query result, compare their positions
+        messages = state["messages"]
+        last_human_idx = -1
+        last_query_result_idx = -1
+        
+        # Find the last HumanMessage
+        for i in range(len(messages) - 1, -1, -1):
+            if isinstance(messages[i], HumanMessage):
+                last_human_idx = i
+                break
+        
+        # Find the last query result (tool message or content with query results)
+        for i in range(len(messages) - 1, -1, -1):
+            msg = messages[i]
             # Check if this is a tool message from sql_db_query
             if hasattr(msg, 'name') and msg.name == 'sql_db_query':
-                has_query_results = True
-                if self.enable_logging:
-                    logger.info("📊 [QUERY RESULTS DETECTED] 쿼리 결과가 감지되었습니다. 답변 포맷팅을 진행합니다.")
+                last_query_result_idx = i
                 break
-            # Also check content for actual query result patterns (tuples/lists with data)
+            # Also check content for actual query result patterns
             elif hasattr(msg, 'content') and msg.content:
                 content = str(msg.content)
-                # More specific check: looks like actual data results, not schema info
                 if (content.strip().startswith('[') and '),' in content) or \
                    (content.strip().startswith('(') and '),' in content):
-                    # Make sure it's not schema information
                     if 'table_info' not in content.lower() and 'pragma' not in content.lower() and \
-                       'integer' not in content.lower() or ('),' in content and len(content) > 50):
-                        has_query_results = True
-                        if self.enable_logging:
-                            logger.info("📊 [QUERY RESULTS DETECTED] 쿼리 결과가 감지되었습니다. 답변 포맷팅을 진행합니다.")
+                       ('),' in content and len(content) > 50):
+                        last_query_result_idx = i
                         break
         
-        # If we have results, don't bind tools - just format the answer
-        if has_query_results:
+        # Determine if we should use previous results or generate new query
+        has_query_results = last_query_result_idx >= 0
+        has_new_question_after_results = last_human_idx > last_query_result_idx if has_query_results else False
+        
+        # If we have query results AND the last question came BEFORE the results, format the answer
+        # If we have query results BUT the last question came AFTER the results, generate new query
+        if has_query_results and not has_new_question_after_results:
             # Add instruction to format the results
             format_instruction = {
                 "role": "system",
@@ -350,6 +369,9 @@ SECURITY REQUIREMENTS (CRITICAL for enterprise use):
             if self.enable_logging:
                 logger.info("📝 [ANSWER FORMATTING] 쿼리 결과를 자연어로 포맷팅 중...")
         else:
+            # New question or no previous results - generate new query
+            if self.enable_logging and has_new_question_after_results:
+                logger.info("🆕 [NEW QUESTION DETECTED] 새로운 질문이 감지되었습니다. 새 쿼리를 생성합니다.")
             # We do not force a tool call here, to allow the model to
             # respond naturally when it obtains the solution.
             if self.enable_logging:
@@ -543,7 +565,14 @@ You will call the appropriate tool to execute the query after running this check
             "Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question."
         )
         
-        question = state["messages"][0].content
+        # Get the last HumanMessage (most recent user question)
+        messages = state["messages"]
+        last_human_message = None
+        for msg in reversed(messages):
+            if isinstance(msg, HumanMessage):
+                last_human_message = msg
+                break
+        question = last_human_message.content if last_human_message else (messages[0].content if messages else "")
         context = state["messages"][-1].content
         
         prompt = GRADE_PROMPT.format(question=question, context=context)
@@ -566,8 +595,14 @@ You will call the appropriate tool to execute the query after running this check
             "Formulate an improved question:"
         )
         
+        # Get the last HumanMessage (most recent user question)
         messages = state["messages"]
-        question = messages[0].content
+        last_human_message = None
+        for msg in reversed(messages):
+            if isinstance(msg, HumanMessage):
+                last_human_message = msg
+                break
+        question = last_human_message.content if last_human_message else (messages[0].content if messages else "")
         prompt = REWRITE_PROMPT.format(question=question)
         response = self.model.invoke([{"role": "user", "content": prompt}])
         return {"messages": [HumanMessage(content=response.content)]}
@@ -584,7 +619,14 @@ You will call the appropriate tool to execute the query after running this check
             "Context: {context}"
         )
         
-        question = state["messages"][0].content
+        # Get the last HumanMessage (most recent user question)
+        messages = state["messages"]
+        last_human_message = None
+        for msg in reversed(messages):
+            if isinstance(msg, HumanMessage):
+                last_human_message = msg
+                break
+        question = last_human_message.content if last_human_message else (messages[0].content if messages else "")
         context = state["messages"][-1].content
         prompt = GENERATE_PROMPT.format(question=question, context=context)
         response = self.model.invoke([{"role": "user", "content": prompt}])
@@ -607,7 +649,21 @@ Respond with only "SQL" or "RAG" or "DIRECT".
 IMPORTANT: All responses must be in Korean (한국어).
 """
         
-        question = state["messages"][0].content
+        # Get the last HumanMessage (most recent user question)
+        # When using checkpointer, previous messages are preserved, so we need the latest one
+        messages = state["messages"]
+        last_human_message = None
+        for msg in reversed(messages):
+            if isinstance(msg, HumanMessage):
+                last_human_message = msg
+                break
+        
+        if not last_human_message:
+            # Fallback to first message if no HumanMessage found
+            question = messages[0].content if messages else ""
+        else:
+            question = last_human_message.content
+        
         response = self.model.invoke([{"role": "user", "content": routing_prompt + f"\n\nQuestion: {question}"}])
         decision = response.content.strip().upper()
         
@@ -638,10 +694,9 @@ IMPORTANT: All responses must be in Korean (한국어).
         user_question = None
         
         for msg in reversed(state["messages"]):
-            # 사용자 질문 찾기
-            if not user_question and hasattr(msg, 'content') and hasattr(msg, 'role'):
-                if hasattr(msg, 'role') and msg.role == 'user':
-                    user_question = msg.content
+            # 사용자 질문 찾기 (HumanMessage)
+            if not user_question and isinstance(msg, HumanMessage):
+                user_question = msg.content
             # 쿼리 결과 찾기 (ToolMessage from sql_db_query)
             if hasattr(msg, 'name') and msg.name == 'sql_db_query':
                 query_results = msg.content
@@ -664,6 +719,21 @@ IMPORTANT: All responses must be in Korean (한국어).
             response = self.model.invoke([korean_prompt] + state["messages"])
             return {"messages": [response]}
         
+        # 원본 SQL 쿼리 찾기 (메시지 히스토리에서)
+        original_sql_query = None
+        for msg in reversed(state["messages"]):
+            if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                for tc in msg.tool_calls:
+                    if isinstance(tc, dict) and tc.get('name') == 'sql_db_query':
+                        original_sql_query = tc.get('args', {}).get('query', '')
+                        break
+                    elif hasattr(tc, 'name') and tc.name == 'sql_db_query':
+                        if hasattr(tc, 'args') and isinstance(tc.args, dict):
+                            original_sql_query = tc.args.get('query', '')
+                            break
+            if original_sql_query:
+                break
+        
         # 쿼리 결과를 자연어로 포맷팅
         format_instruction = {
             "role": "system",
@@ -671,32 +741,46 @@ IMPORTANT: All responses must be in Korean (한국어).
 
 CRITICAL INSTRUCTIONS:
 1. The user asked a question in Korean, and you received SQL query results
-2. Convert the raw query results (tuples, lists) into a natural, readable Korean answer
-3. Format the data in a user-friendly way:
+2. Analyze the SQL query to understand what each column in the results represents
+3. Convert the raw query results (tuples, lists) into a natural, readable Korean answer
+4. Format the data in a user-friendly way:
    - For lists: Use numbered items or bullet points
    - Include all relevant information from the results
+   - Use the correct column names based on the SQL query (e.g., if query has "driver_id", use "기사 ID", not "주문 ID")
    - Translate status values to Korean when displaying (e.g., 'delivered' → '배송완료', 'shipped' → '배송중', 'pending' → '대기중', 'delayed' → '지연')
    - Format dates in a readable way (e.g., "2026년 1월 11일")
+   - Format numbers appropriately (e.g., averages, counts)
    - Make the answer conversational and easy to understand
 
-4. NEVER return raw query results like tuples or lists - always format as natural sentences
-5. If the results are empty, explain that in Korean
+5. NEVER return raw query results like tuples or lists - always format as natural sentences
+6. If the results are empty, explain that in Korean
+7. Pay attention to the SQL query structure to correctly interpret column meanings:
+   - SELECT driver_id, AVG(...) → first column is "기사 ID" (driver ID), second is the average
+   - SELECT order_id, ... → first column is "주문 ID" (order ID)
+   - Always match column positions with their meanings from the SQL query
 
 Example format:
-"배송이 완료되지 않은 주문 목록은 다음과 같습니다:
+"기사별 평균 배송 소요 시간은 다음과 같습니다:
 
-1. 주문 ID: 1 / 주문 날짜: 2026년 1월 11일 / 지역: 경상권 / 상태: 지연
-2. 주문 ID: 3 / 주문 날짜: 2026년 1월 21일 / 지역: 전라권 / 상태: 배송중
+1. 기사 ID: 1 / 평균 배송 소요 시간: 3.67일
+2. 기사 ID: 2 / 평균 배송 소요 시간: 3.0일
 ..."
 
 Always respond in Korean."""
         }
         
-        # 사용자 질문과 쿼리 결과를 포함한 메시지 구성
+        # 사용자 질문, SQL 쿼리, 쿼리 결과를 포함한 메시지 구성
         messages_to_send = [format_instruction]
         if user_question:
             messages_to_send.append({"role": "user", "content": user_question})
-        messages_to_send.append({"role": "assistant", "content": f"쿼리 결과:\n{query_results}"})
+        
+        # SQL 쿼리 정보 추가 (컬럼 의미 파악을 위해)
+        context_parts = []
+        if original_sql_query:
+            context_parts.append(f"실행된 SQL 쿼리:\n{original_sql_query}\n")
+        context_parts.append(f"쿼리 결과:\n{query_results}")
+        
+        messages_to_send.append({"role": "assistant", "content": "\n".join(context_parts)})
         
         if self.enable_logging:
             logger.info("=" * 80)
@@ -753,10 +837,23 @@ Always respond in Korean."""
         messages = state["messages"]
         last_message = messages[-1]
         
-        # 무한 루프 방지: 같은 쿼리가 반복되면 중단
-        if len(messages) > 10:  # 메시지가 너무 많으면 중단
-            logger.warning("Too many messages in SQL workflow, stopping to prevent infinite loop")
-            return END
+        # 무한 루프 방지: 최근 메시지만 확인 (이전 대화 히스토리는 제외)
+        # checkpointer로 이전 대화가 포함될 수 있으므로, 최근 워크플로우 메시지만 확인
+        recent_messages = messages[-20:]  # 최근 20개 메시지만 확인
+        # 같은 쿼리가 반복되는지 확인 (최근 메시지에서만)
+        sql_queries_in_recent = []
+        for msg in recent_messages:
+            if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                for tc in msg.tool_calls:
+                    if isinstance(tc, dict) and tc.get('name') == 'sql_db_query':
+                        sql_queries_in_recent.append(tc.get('args', {}).get('query', ''))
+        
+        # 같은 쿼리가 3번 이상 반복되면 무한 루프로 판단
+        if len(sql_queries_in_recent) >= 3:
+            unique_queries = set(sql_queries_in_recent[-3:])
+            if len(unique_queries) == 1:  # 같은 쿼리가 반복됨
+                logger.warning("Same query repeated multiple times, stopping to prevent infinite loop")
+                return END
         
         # 에러 메시지가 있으면 중단
         for msg in reversed(messages[-5:]):  # 최근 5개 메시지 확인
@@ -840,21 +937,46 @@ Always respond in Korean."""
             """쿼리 실행 후 재시도 여부 결정 - 무한 루프 방지"""
             messages = state["messages"]
             
-            # 최근 메시지에서 에러 확인
-            for msg in reversed(messages[-3:]):
-                if hasattr(msg, 'content') and msg.content:
-                    content = str(msg.content).lower()
-                    if 'error' in content or 'syntax error' in content or 'operationalerror' in content:
-                        logger.warning("Query execution error detected, ending workflow")
-                        return END
-                    # 스키마 정보가 결과로 나온 경우 (PRAGMA 등) - 재시도하지 않고 종료
-                    if 'table_info' in content or 'pragma' in content or ('delivery_id' in content and 'integer' in content and 'varchar' in content):
-                        logger.warning("Schema inspection query detected in results, ending workflow")
-                        return END
+            # 최근 메시지에서 에러 확인 (tool message 결과만 확인)
+            for msg in reversed(messages[-5:]):
+                # tool message의 결과만 확인 (실제 쿼리 실행 결과)
+                if hasattr(msg, 'name') and msg.name == 'sql_db_query':
+                    if hasattr(msg, 'content') and msg.content:
+                        content = str(msg.content).lower()
+                        if 'error' in content or 'syntax error' in content or 'operationalerror' in content:
+                            logger.warning("Query execution error detected, ending workflow")
+                            return END
+                        # 스키마 정보가 결과로 나온 경우 (PRAGMA 등) - 재시도하지 않고 종료
+                        # 스키마 정보는 보통 'table_info' 또는 'pragma' 키워드를 포함하거나
+                        # 'integer', 'varchar' 같은 타입 정보가 설명 형태로 나옴
+                        # 실제 데이터 결과는 튜플/리스트 형태 [(...), (...)]를 가짐
+                        is_schema_info = False
+                        if 'table_info' in content or 'pragma' in content:
+                            is_schema_info = True
+                        elif 'integer' in content and 'varchar' in content:
+                            # 실제 데이터 결과는 보통 튜플 형태 [(...), (...)]를 가지므로
+                            # 스키마 정보는 이런 패턴이 없고 설명 형태
+                            if not (content.strip().startswith('[') or content.strip().startswith('(') or '),' in content):
+                                is_schema_info = True
+                        
+                        if is_schema_info:
+                            logger.warning("Schema inspection query detected in results, ending workflow")
+                            return END
+                        # 정상적인 쿼리 결과가 있으면 더 이상 확인하지 않음
+                        break
             
-            # 메시지가 너무 많으면 중단
-            if len(messages) > 15:
-                logger.warning("Too many messages, ending workflow to prevent infinite loop")
+            # 무한 루프 방지: 최근 메시지만 확인 (이전 대화 히스토리는 제외)
+            # checkpointer로 이전 대화가 포함될 수 있으므로, 최근 워크플로우 메시지만 확인
+            recent_messages = messages[-30:]  # 최근 30개 메시지만 확인
+            # 같은 쿼리 결과가 반복되는지 확인
+            query_results_count = 0
+            for msg in recent_messages:
+                if hasattr(msg, 'name') and msg.name == 'sql_db_query':
+                    query_results_count += 1
+            
+            # 쿼리 결과가 5번 이상 나오면 무한 루프로 판단
+            if query_results_count > 5:
+                logger.warning("Too many query results in recent workflow, ending to prevent infinite loop")
                 return END
             
             # 쿼리 결과가 있는지 확인
@@ -916,13 +1038,17 @@ Always respond in Korean."""
         workflow.add_edge("generate_answer", END)
         workflow.add_edge("direct_response", END)
         
-        return workflow.compile()
+        # Compile with checkpointer for thread-scoped memory
+        return workflow.compile(checkpointer=self.checkpointer)
     
-    def invoke(self, query: str, config: dict = None):
-        """Invoke the agent with a query."""
+    def invoke(self, query: str, config: dict = None, thread_id: str = "default"):
+        """Invoke the agent with a query and thread_id for conversation memory."""
         config = config or {}
+        # Add thread_id to config for checkpointer
+        config["configurable"] = {"thread_id": thread_id}
+        
         result = self.graph.invoke(
-            {"messages": [{"role": "user", "content": query}]},
+            {"messages": [HumanMessage(content=query)]},
             config,
         )
         return result

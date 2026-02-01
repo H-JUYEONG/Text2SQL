@@ -33,6 +33,10 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # 전역 에이전트 인스턴스
 agent = None
 
+# 대화 세션 관리 (간단하게 하나의 세션으로 관리, 필요시 세션별로 확장 가능)
+# 실제 프로덕션에서는 세션 ID나 사용자 ID를 사용하여 thread_id를 관리해야 합니다
+DEFAULT_THREAD_ID = "main_session"
+
 
 def initialize_agent():
     """에이전트 초기화"""
@@ -107,8 +111,9 @@ async def chat(request: ChatRequest):
         # 사용자 요청 로깅 (기업 환경)
         logger.info(f"User query received: {message[:100]}...")
         
-        # 에이전트 호출
-        result = agent.invoke(message)
+        # 에이전트 호출 (thread_id를 사용하여 대화 히스토리 유지)
+        # LangGraph의 checkpointer가 thread_id별로 대화 히스토리를 자동으로 관리합니다
+        result = agent.invoke(message, thread_id=DEFAULT_THREAD_ID)
         
         # 마지막 메시지에서 답변 추출
         if result and 'messages' in result:
