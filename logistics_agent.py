@@ -628,6 +628,86 @@ IMPORTANT: All responses must be in Korean (한국어).
         # Default to SQL workflow
         return "sql_workflow"
     
+    def format_query_results(self, state: MessagesState):
+        """Format SQL query results into natural Korean language."""
+        # 쿼리 결과 찾기
+        query_results = None
+        user_question = None
+        
+        for msg in reversed(state["messages"]):
+            # 사용자 질문 찾기
+            if not user_question and hasattr(msg, 'content') and hasattr(msg, 'role'):
+                if hasattr(msg, 'role') and msg.role == 'user':
+                    user_question = msg.content
+            # 쿼리 결과 찾기 (ToolMessage from sql_db_query)
+            if hasattr(msg, 'name') and msg.name == 'sql_db_query':
+                query_results = msg.content
+                break
+            # 또는 content에 튜플/리스트 형태의 결과가 있는지 확인
+            elif hasattr(msg, 'content') and msg.content:
+                content = str(msg.content)
+                if (content.strip().startswith('[') and '),' in content) or \
+                   (content.strip().startswith('(') and '),' in content):
+                    if 'table_info' not in content.lower() and 'pragma' not in content.lower():
+                        query_results = content
+                        break
+        
+        if not query_results:
+            # 결과가 없으면 그냥 응답
+            korean_prompt = {
+                "role": "system",
+                "content": "You are a helpful assistant. Always respond in Korean (한국어) in a natural, conversational style."
+            }
+            response = self.model.invoke([korean_prompt] + state["messages"])
+            return {"messages": [response]}
+        
+        # 쿼리 결과를 자연어로 포맷팅
+        format_instruction = {
+            "role": "system",
+            "content": """You are a helpful assistant that converts SQL query results into natural, conversational Korean answers.
+
+CRITICAL INSTRUCTIONS:
+1. The user asked a question in Korean, and you received SQL query results
+2. Convert the raw query results (tuples, lists) into a natural, readable Korean answer
+3. Format the data in a user-friendly way:
+   - For lists: Use numbered items or bullet points
+   - Include all relevant information from the results
+   - Translate status values to Korean when displaying (e.g., 'delivered' → '배송완료', 'shipped' → '배송중', 'pending' → '대기중', 'delayed' → '지연')
+   - Format dates in a readable way (e.g., "2026년 1월 11일")
+   - Make the answer conversational and easy to understand
+
+4. NEVER return raw query results like tuples or lists - always format as natural sentences
+5. If the results are empty, explain that in Korean
+
+Example format:
+"배송이 완료되지 않은 주문 목록은 다음과 같습니다:
+
+1. 주문 ID: 1 / 주문 날짜: 2026년 1월 11일 / 지역: 경상권 / 상태: 지연
+2. 주문 ID: 3 / 주문 날짜: 2026년 1월 21일 / 지역: 전라권 / 상태: 배송중
+..."
+
+Always respond in Korean."""
+        }
+        
+        # 사용자 질문과 쿼리 결과를 포함한 메시지 구성
+        messages_to_send = [format_instruction]
+        if user_question:
+            messages_to_send.append({"role": "user", "content": user_question})
+        messages_to_send.append({"role": "assistant", "content": f"쿼리 결과:\n{query_results}"})
+        
+        if self.enable_logging:
+            logger.info("=" * 80)
+            logger.info("📝 [RESULT FORMATTING] 쿼리 결과를 자연어로 포맷팅 중...")
+            logger.info(f"원본 결과: {str(query_results)[:200]}...")
+            logger.info("=" * 80)
+        
+        response = self.model.invoke(messages_to_send)
+        
+        if self.enable_logging:
+            logger.info(f"✅ [FORMATTED RESPONSE] 포맷팅 완료: {str(response.content)[:200]}...")
+        
+        return {"messages": [response]}
+    
     def _run_query_with_logging(self, state: MessagesState):
         """Run query with detailed logging for enterprise monitoring."""
         # ToolNode를 직접 사용하되, 실행 전후에 로깅 추가
@@ -699,6 +779,7 @@ IMPORTANT: All responses must be in Korean (한국어).
         workflow.add_node("generate_query", self.generate_query)
         workflow.add_node("check_query", self.check_query)
         workflow.add_node("run_query", self._run_query_with_logging)
+        workflow.add_node("format_results", self.format_query_results)
         
         # ========== RAG Workflow Nodes (following Custom RAG Agent pattern) ==========
         workflow.add_node("generate_query_or_respond", self.generate_query_or_respond)
@@ -751,8 +832,8 @@ IMPORTANT: All responses must be in Korean (한국어).
         )
         workflow.add_edge("check_query", "run_query")
         
-        # run_query 후 조건부로 generate_query 또는 END (무한 루프 방지)
-        def should_retry_after_query(state: MessagesState) -> Literal[END, "generate_query"]:
+        # run_query 후 조건부로 format_results, generate_query 또는 END (무한 루프 방지)
+        def should_retry_after_query(state: MessagesState) -> Literal[END, "format_results", "generate_query"]:
             """쿼리 실행 후 재시도 여부 결정 - 무한 루프 방지"""
             messages = state["messages"]
             
@@ -773,7 +854,24 @@ IMPORTANT: All responses must be in Korean (한국어).
                 logger.warning("Too many messages, ending workflow to prevent infinite loop")
                 return END
             
-            # tool_calls가 있으면 재시도, 없으면 종료
+            # 쿼리 결과가 있는지 확인
+            has_query_results = False
+            for msg in reversed(messages[-5:]):
+                if hasattr(msg, 'name') and msg.name == 'sql_db_query':
+                    has_query_results = True
+                    break
+                elif hasattr(msg, 'content') and msg.content:
+                    content = str(msg.content)
+                    if (content.strip().startswith('[') and '),' in content) or \
+                       (content.strip().startswith('(') and '),' in content):
+                        if 'table_info' not in content.lower() and 'pragma' not in content.lower():
+                            has_query_results = True
+                            break
+            
+            # 쿼리 결과가 있으면 포맷팅으로, tool_calls가 있으면 재시도, 없으면 종료
+            if has_query_results:
+                return "format_results"
+            
             last_message = messages[-1]
             if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
                 return "generate_query"
@@ -783,10 +881,17 @@ IMPORTANT: All responses must be in Korean (한국어).
             "run_query",
             should_retry_after_query,
             {
+                "format_results": "format_results",
                 "generate_query": "generate_query",
                 END: END,
             },
         )
+        
+        # 포맷팅 후 종료
+        workflow.add_edge("format_results", END)
+        
+        # 포맷팅 후 종료
+        workflow.add_edge("format_results", END)
         
         # RAG workflow edges (following Custom RAG Agent pattern)
         if self.retriever_tool:
