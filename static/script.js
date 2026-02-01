@@ -82,7 +82,7 @@ function addLoadingMessage() {
     
     const messageText = document.createElement('div');
     messageText.className = 'message-text';
-    messageText.innerHTML = '<div style="display: flex; align-items: center; gap: 8px;"><div style="width: 16px; height: 16px; border: 2px solid #f3f3f3; border-top: 2px solid #5ca8fe; border-radius: 50%; animation: spin 1s linear infinite;"></div><span>에이전트가 답변을 생성하고 있습니다...</span></div>';
+    messageText.innerHTML = '<div style="display: flex; align-items: center; gap: 8px;"><div style="width: 16px; height: 16px; border: 2px solid #f3f3f3; border-top: 2px solid #5ca8fe; border-radius: 50%; animation: spin 1s linear infinite;"></div><span>답변을 생성하고 있습니다...</span></div>';
     
     content.appendChild(messageText);
     messageDiv.appendChild(avatar);
