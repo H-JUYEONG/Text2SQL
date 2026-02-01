@@ -18,7 +18,7 @@ LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0"))
 EMBEDDINGS_MODEL = os.getenv("EMBEDDINGS_MODEL", "text-embedding-3-large")
 
 # Database Configuration
-DATABASE_URI = os.getenv("DATABASE_URI", "sqlite:///logistics.db")
+DATABASE_URI = os.getenv("DATABASE_URI", "sqlite:///data/logistics.db")
 
 # RAG Configuration
 VECTOR_STORE_TYPE = os.getenv("VECTOR_STORE_TYPE", "in_memory")  # in_memory, chroma, etc.

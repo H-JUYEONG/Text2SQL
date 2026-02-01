@@ -16,7 +16,7 @@ from langchain_community.document_loaders import (
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_openai import OpenAIEmbeddings
-from config import (
+from src.config import (
     EMBEDDINGS_MODEL,
     CHUNK_SIZE,
     CHUNK_OVERLAP,

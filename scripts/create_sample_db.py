@@ -8,10 +8,14 @@ sys.dont_write_bytecode = True
 import sqlite3
 from datetime import datetime, timedelta
 import random
+import os
 
 
-def create_sample_database(db_path: str = "logistics.db"):
+def create_sample_database(db_path: str = "data/logistics.db"):
     """Create a sample logistics database with test data."""
+    # 디렉토리가 없으면 생성
+    os.makedirs(os.path.dirname(db_path) if os.path.dirname(db_path) else ".", exist_ok=True)
+    
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
@@ -215,3 +219,4 @@ def create_sample_database(db_path: str = "logistics.db"):
 
 if __name__ == "__main__":
     create_sample_database()
+

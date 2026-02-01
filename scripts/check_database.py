@@ -6,7 +6,7 @@ import sys
 sys.dont_write_bytecode = True
 
 import sqlite3
-from config import DATABASE_URI
+from src.config import DATABASE_URI
 
 
 def check_database():
@@ -159,7 +159,7 @@ def check_database():
         print(f"   데이터베이스 파일 경로: {db_path}")
     except FileNotFoundError:
         print(f"\n❌ 데이터베이스 파일을 찾을 수 없습니다: {db_path}")
-        print("   먼저 'python create_sample_db.py'를 실행하세요.")
+        print("   먼저 'python scripts/create_sample_db.py'를 실행하세요.")
 
 
 if __name__ == "__main__":

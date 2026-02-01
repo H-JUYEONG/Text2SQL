@@ -20,7 +20,7 @@ from langgraph.graph import StateGraph, MessagesState, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.checkpoint.memory import MemorySaver
 
-from config import (
+from src.config import (
     LLM_MODEL,
     LLM_TEMPERATURE,
     DATABASE_URI,
@@ -1082,3 +1082,4 @@ if __name__ == "__main__":
                     print(f"[{node}] {last_msg.content}")
                 elif hasattr(last_msg, "tool_calls"):
                     print(f"[{node}] Tool calls: {[tc['name'] for tc in last_msg.tool_calls]}")
+

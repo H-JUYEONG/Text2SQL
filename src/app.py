@@ -11,10 +11,10 @@ from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
-from logistics_agent import LogisticsAgent
-from create_sample_db import create_sample_database
-from index_documents import load_documents, create_vector_store
-from config import DATABASE_URI
+from src.logistics_agent import LogisticsAgent
+from scripts.create_sample_db import create_sample_database
+from scripts.index_documents import load_documents, create_vector_store
+from src.config import DATABASE_URI
 
 app = FastAPI(title="물류 데이터 분석 에이전트")
 

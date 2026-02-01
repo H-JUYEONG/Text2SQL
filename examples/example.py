@@ -4,9 +4,9 @@ Example usage of the Logistics Text2SQL + RAG Agent.
 import sys
 sys.dont_write_bytecode = True
 
-from logistics_agent import LogisticsAgent
-from index_documents import create_vector_store, load_documents
-from config import DATABASE_URI
+from src.logistics_agent import LogisticsAgent
+from scripts.index_documents import create_vector_store, load_documents
+from src.config import DATABASE_URI
 
 
 def main():
