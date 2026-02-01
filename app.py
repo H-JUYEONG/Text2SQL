@@ -1,6 +1,10 @@
 """
 FastAPI 웹 애플리케이션 - 물류 데이터 분석 에이전트
 """
+import sys
+# 바이트코드(.pyc) 파일 생성 방지
+sys.dont_write_bytecode = True
+
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse

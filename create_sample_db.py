@@ -2,6 +2,9 @@
 Create a sample logistics database for testing.
 물류 회사 도메인에 맞는 데이터베이스 스키마 및 샘플 데이터 생성
 """
+import sys
+sys.dont_write_bytecode = True
+
 import sqlite3
 from datetime import datetime, timedelta
 import random

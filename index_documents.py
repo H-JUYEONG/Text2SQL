@@ -2,6 +2,9 @@
 Index documents for RAG system.
 This script loads logistics-related documents, splits them, and indexes them into a vector store.
 """
+import sys
+sys.dont_write_bytecode = True
+
 import os
 from pathlib import Path
 from langchain_community.document_loaders import (

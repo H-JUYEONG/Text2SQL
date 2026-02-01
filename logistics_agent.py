@@ -2,6 +2,9 @@
 Logistics Text2SQL + RAG Agent using LangGraph 1.0+
 Based on Custom SQL Agent and Custom RAG Agent patterns from LangChain documentation.
 """
+import sys
+sys.dont_write_bytecode = True
+
 import os
 import re
 import logging

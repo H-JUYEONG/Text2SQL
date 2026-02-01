@@ -1,6 +1,10 @@
 """
 Configuration file for the logistics Text2SQL + RAG agent.
 """
+import sys
+# 바이트코드(.pyc) 파일 생성 방지 - 모든 모듈에 적용
+sys.dont_write_bytecode = True
+
 import os
 from dotenv import load_dotenv
 

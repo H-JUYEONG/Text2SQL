@@ -2,6 +2,9 @@
 데이터베이스 데이터 확인 스크립트
 생성된 데이터가 올바르게 들어갔는지 확인합니다.
 """
+import sys
+sys.dont_write_bytecode = True
+
 import sqlite3
 from config import DATABASE_URI
 
