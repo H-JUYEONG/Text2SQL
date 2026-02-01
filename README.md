@@ -1,4 +1,4 @@
-Text2SQL + RAG Agent
+# Text2SQL + RAG Agent
 
 물류회사 도메인을 위한 Text2SQL + RAG 통합 에이전트입니다.
 
