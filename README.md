@@ -118,6 +118,11 @@ for chunk in agent.stream(query):
             print(update["messages"][-1].content)
 ```
 
+**대화형 모드 실행 (권장):**
+```bash
+python run.py
+```
+
 예제 스크립트 실행:
 ```bash
 python example.py
@@ -183,8 +188,7 @@ MIT License
 
 ## 참고 자료
 
-- [LangGraph 문서](https://langchain-ai.github.io/langgraph/)
-- [LangChain 문서](https://python.langchain.com/)
-- [SQL Agent 튜토리얼](https://langchain-ai.github.io/langgraph/tutorials/sql-agent/)
-- [RAG Agent 튜토리얼](https://langchain-ai.github.io/langgraph/tutorials/agentic-rag/)
-
+- [LangChain RAG agent](https://docs.langchain.com/oss/python/langchain/rag/)
+- [LangChain SQL agent](https://docs.langchain.com/oss/python/langchain/sql-agent/)
+- [LangGraph Custom RAG agent](https://docs.langchain.com/oss/python/langgraph/agentic-rag/)
+- [LangGraph Custom SQL agent](https://docs.langchain.com/oss/python/langgraph/sql-agent/)
