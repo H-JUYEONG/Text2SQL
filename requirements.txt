@@ -1,0 +1,20 @@
+# LangChain & LangGraph (1.x 라인 고정)
+langchain>=1.0.0,<2.0.0
+langgraph>=1.0.0,<2.0.0
+langchain-openai>=1.0.0,<2.0.0
+langchain-text-splitters>=1.0.0,<2.0.0
+langchain-community>=0.3.0  # 1.0.0 버전이 아직 없음, 최신 0.4.x 사용
+langchain-anthropic>=1.0.0,<2.0.0
+langchain-google-genai>=2.0.0
+langsmith>=0.2.0
+
+# 기타 의존성
+beautifulsoup4>=4.12.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+
+# 웹 프레임워크
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+
