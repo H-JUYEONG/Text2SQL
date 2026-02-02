@@ -78,38 +78,6 @@ Text2SQL/
 - **SQLite**: 데이터베이스
 - **pypdf**: PDF 파싱
 
-## 🚀 실행 방법
-
-1. **환경 설정**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. **환경 변수 설정** (`.env`)
-   ```
-   OPENAI_API_KEY=your_key
-   LLM_MODEL=gpt-4o-mini
-   DATABASE_URI=sqlite:///data/logistics.db
-   ```
-
-3. **데이터베이스 생성**
-   ```bash
-   python scripts/create_sample_db.py
-   ```
-
-4. **문서 인덱싱** (선택사항)
-   - `data/pdf/` 폴더에 PDF 파일 추가
-   - 앱 시작 시 자동 인덱싱
-
-5. **앱 실행**
-   ```bash
-   uvicorn src.app:app --reload
-   ```
-   또는
-   ```bash
-   scripts/run_app.bat
-   ```
-
 ## 📊 워크플로우 상세
 
 ### SQL 워크플로우
@@ -137,3 +105,5 @@ generate_query_or_respond → retrieve → grade_documents
 - [LangChain SQL agent](https://docs.langchain.com/oss/python/langchain/sql-agent/)
 - [LangGraph Custom RAG agent](https://docs.langchain.com/oss/python/langgraph/agentic-rag/)
 - [LangGraph Custom SQL agent](https://docs.langchain.com/oss/python/langgraph/sql-agent/)
+- [Document loaders](https://docs.langchain.com/oss/python/integrations/document_loaders/)
+- [Vector stores](https://docs.langchain.com/oss/python/integrations/vectorstores#in-memory/)
