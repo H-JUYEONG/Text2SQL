@@ -8,8 +8,6 @@ on:
   workflow_dispatch:
 
 env:
-  AWS_REGION: ap-northeast-2
-  EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
   EC2_USER: ubuntu
 
 jobs:
@@ -20,13 +18,6 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
 
     - name: Add EC2 instance to known hosts
       run: |
@@ -43,9 +34,18 @@ jobs:
           cd ~/Text2SQL || git clone ${{ secrets.REPO_URL }} ~/Text2SQL
           cd ~/Text2SQL
           git pull origin main
-          docker-compose down
+          
+          # 기존 컨테이너 중지 및 제거, 이미지도 제거
+          docker-compose down --rmi all || true
+          
+          # 사용하지 않는 이미지 정리 (선택사항, 디스크 공간 절약)
+          docker image prune -f
+          
+          # 새로 빌드 및 실행
           docker-compose build --no-cache
           docker-compose up -d
+          
+          # 헬스 체크
           sleep 10
           curl -f http://localhost:8000/api/health || exit 1
         EOF

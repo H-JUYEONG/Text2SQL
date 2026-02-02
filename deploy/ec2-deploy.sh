@@ -5,11 +5,15 @@ set -e
 
 echo "🚀 Starting deployment..."
 
-# Docker 컨테이너 중지 및 제거
-echo "📦 Stopping existing containers..."
-docker-compose down || true
+# 기존 컨테이너 중지 및 제거, 이미지도 제거
+echo "📦 Stopping and removing existing containers and images..."
+docker-compose down --rmi all || true
 
-# 최신 이미지 pull (또는 빌드)
+# 사용하지 않는 이미지 정리 (디스크 공간 절약)
+echo "🧹 Cleaning up unused images..."
+docker image prune -f
+
+# 새로 빌드
 echo "🔨 Building new image..."
 docker-compose build --no-cache
 
