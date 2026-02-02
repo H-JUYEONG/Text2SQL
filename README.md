@@ -106,4 +106,4 @@ generate_query_or_respond → retrieve → grade_documents
 - [LangGraph Custom RAG agent](https://docs.langchain.com/oss/python/langgraph/agentic-rag/)
 - [LangGraph Custom SQL agent](https://docs.langchain.com/oss/python/langgraph/sql-agent/)
 - [Document loaders](https://docs.langchain.com/oss/python/integrations/document_loaders/)
-- [Vector stores](https://docs.langchain.com/oss/python/integrations/vectorstores#in-memory/)
+- [Vector stores](https://docs.langchain.com/oss/python/integrations/vectorstores#in-memory/)  
