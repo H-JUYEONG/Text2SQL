@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # LLM Configuration
-LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")  # or "claude-sonnet-4-5-20250929", "gpt-4o"
+LLM_MODEL = "gpt-4o-mini"  # or "claude-sonnet-4-5-20250929", "gpt-4o", "claude-opus"
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0"))
 
 # Embeddings Configuration

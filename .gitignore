@@ -1,12 +1,6 @@
-# Environment variables
-.env
-.env.local
-.env.*.local
-
 # Python
 __pycache__/
 *.py[cod]
-*.pyc
 *$py.class
 *.so
 .Python
@@ -26,16 +20,11 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual environments
+# Virtual Environment
 venv/
-env/
 ENV/
+env/
 .venv
-
-# Database files
-*.db
-*.sqlite
-*.sqlite3
 
 # IDE
 .vscode/
@@ -44,14 +33,27 @@ ENV/
 *.swo
 *~
 
+# Environment variables
+.env
+.env.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
 # OS
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
+# Project specific
+data/logistics.db
+Text2SQL/
 
-# LangSmith
-.langsmith/
-
-".env" 
+# Deployment
+deploy_key
+*.pem
