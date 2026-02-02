@@ -92,7 +92,7 @@ generate_query_or_respond → retrieve → grade_documents
 → (generate_answer | rewrite_question) → END
 ```
 
-## 🔍 주요 특징
+## 🔍 주요 특징  
 
 - **문서 구조 보존**: RAG 응답 시 PDF의 단계/구조 유지
 - **보안 검증**: SQL 쿼리 보안 검사 (SELECT만 허용)
