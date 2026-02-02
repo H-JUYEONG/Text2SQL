@@ -86,7 +86,7 @@ list_tables → call_get_schema → get_schema → generate_query
 → check_query → run_query → format_results → END
 ```
 
-### RAG 워크플로우
+### RAG 워크플로우  
 ```
 generate_query_or_respond → retrieve → grade_documents 
 → (generate_answer | rewrite_question) → END
