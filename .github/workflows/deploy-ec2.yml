@@ -7,9 +7,6 @@ on:
       - master
   workflow_dispatch:
 
-env:
-  EC2_USER: ubuntu
-
 jobs:
   deploy:
     name: Deploy to EC2
@@ -19,7 +16,25 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Validate secrets
+      run: |
+        if [ -z "${{ secrets.EC2_HOST }}" ]; then
+          echo "Error: EC2_HOST secret is not set"
+          exit 1
+        fi
+        if [ -z "${{ secrets.EC2_SSH_KEY }}" ]; then
+          echo "Error: EC2_SSH_KEY secret is not set"
+          exit 1
+        fi
+        if [ -z "${{ secrets.EC2_USERNAME }}" ]; then
+          echo "Error: EC2_USERNAME secret is not set"
+          exit 1
+        fi
+        echo "✅ All required secrets are set"
+
     - name: Add EC2 instance to known hosts
+      env:
+        EC2_HOST: ${{ secrets.EC2_HOST }}
       run: |
         mkdir -p ~/.ssh
         echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
@@ -29,11 +44,13 @@ jobs:
     - name: Deploy to EC2
       env:
         EC2_HOST: ${{ secrets.EC2_HOST }}
+        EC2_USERNAME: ${{ secrets.EC2_USERNAME }}
+        REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
       run: |
-        ssh -i ~/.ssh/deploy_key ${{ env.EC2_USER }}@${{ env.EC2_HOST }} << 'EOF'
-          cd ~/Text2SQL || git clone ${{ secrets.REPO_URL }} ~/Text2SQL
+        ssh -i ~/.ssh/deploy_key ${{ env.EC2_USERNAME }}@${{ env.EC2_HOST }} << 'EOF'
+          cd ~/Text2SQL || git clone ${{ env.REPO_URL }} ~/Text2SQL
           cd ~/Text2SQL
-          git pull origin main
+          git pull origin main || git pull origin master
           
           # 기존 컨테이너 중지 및 제거, 이미지도 제거
           docker-compose down --rmi all || true
