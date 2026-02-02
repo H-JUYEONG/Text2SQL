@@ -10,7 +10,7 @@ from pathlib import Path
 from langchain_community.document_loaders import (
     DirectoryLoader,
     TextLoader,
-    PyPDFLoader,
+    PyPDFDirectoryLoader,
     CSVLoader,
 )
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -49,13 +49,9 @@ def load_documents(data_dir: str = "data"):
         )
         documents.extend(loader.load())
     
-    # Load PDF files
+    # Load PDF files using PyPDFDirectoryLoader
     if (data_path / "pdf").exists():
-        loader = DirectoryLoader(
-            str(data_path / "pdf"),
-            glob="**/*.pdf",
-            loader_cls=PyPDFLoader,
-        )
+        loader = PyPDFDirectoryLoader(str(data_path / "pdf"))
         documents.extend(loader.load())
     
     # Load CSV files
