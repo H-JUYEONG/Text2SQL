@@ -848,15 +848,59 @@ class SQLNodes:
                 logger.warning("Same query repeated multiple times, stopping to prevent infinite loop")
                 return END
         
-        # 에러 메시지가 있으면 중단
-        for msg in reversed(messages[-5:]):
-            if hasattr(msg, 'content') and msg.content:
+        # 실제 에러 메시지가 있으면 중단 (로그 메시지나 일반 텍스트는 제외)
+        # AIMessage의 content만 확인 (ToolMessage는 제외 - tool 실행 결과는 별도 처리)
+        if self.enable_logging:
+            logger.info("=" * 80)
+            logger.info("🔍 [ERROR DETECTION] 최근 5개 메시지 확인 중...")
+            for i, msg in enumerate(reversed(messages[-5:])):
+                msg_type = type(msg).__name__
+                has_content = hasattr(msg, 'content') and msg.content
+                content_preview = str(msg.content)[:200] if has_content else "No content"
+                logger.info(f"  Message {i+1}: {msg_type} - {content_preview}")
+            logger.info("=" * 80)
+        
+        for i, msg in enumerate(reversed(messages[-5:])):
+            # AIMessage만 확인 (사용자에게 보여지는 에러 메시지)
+            if isinstance(msg, AIMessage) and hasattr(msg, 'content') and msg.content:
                 content = str(msg.content).lower()
-                if 'error' in content or 'syntax error' in content or 'operationalerror' in content:
-                    logger.warning("Error detected in messages, stopping SQL workflow")
+                # 실제 에러 메시지 패턴만 감지 (Traceback, Exception, Error: 등)
+                error_patterns = [
+                    'traceback',
+                    'exception:',
+                    'operationalerror:',
+                    'syntax error:',
+                    'sqlalchemy.exc.',
+                    'psycopg2.',
+                    'connection refused',
+                    'connection to server',
+                    'failed:',
+                    'error:',
+                ]
+                # 에러 패턴이 있고, 단순히 "error"라는 단어만 있는 것이 아닌 경우
+                has_error_pattern = any(pattern in content for pattern in error_patterns)
+                # 단순히 "error"라는 단어만 있는 경우는 제외 (예: "error handling" 같은 일반 텍스트)
+                is_actual_error = has_error_pattern or (
+                    'error' in content and (
+                        'traceback' in content or 
+                        'exception' in content or
+                        'failed' in content or
+                        content.startswith('error') or
+                        ': error' in content
+                    )
+                )
+                if is_actual_error:
+                    logger.warning(f"❌ [ERROR DETECTED] Error detected in AIMessage (message {i+1} from end), stopping SQL workflow")
+                    logger.warning(f"Full message content: {str(msg.content)}")
+                    logger.warning(f"Matched pattern: {[p for p in error_patterns if p in content]}")
                     return END
         
-        if not last_message.tool_calls:
+        # tool_calls가 있는지 확인
+        if not hasattr(last_message, 'tool_calls') or not last_message.tool_calls:
+            if self.enable_logging:
+                logger.warning("⚠️  [NO TOOL CALLS] generate_query에서 tool_calls가 없습니다.")
+                if hasattr(last_message, 'content'):
+                    logger.warning(f"Response content: {str(last_message.content)[:300]}")
             return END
         else:
             return "check_query"
