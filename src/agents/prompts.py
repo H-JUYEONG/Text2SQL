@@ -709,6 +709,7 @@ Key indicators:
 - Requests comparisons, rankings, or aggregations (e.g., "가장 많은 배송을 한 기사", "가장 높은 주문 금액", "Top 5")
 - Asks "who", "what", "how many", "which", "when", "where" about specific data entities
 - The answer requires querying the database to get actual data values
+- **IMPORTANT**: If the question contains clarification responses with criteria (e.g., "배송 건수 기준으로", "매출액으로", "건수로"), it is a SQL query - the user is specifying how to measure/compare data
 
 Examples for SQL:
 - "배송 완료된 주문은 몇 개인가요?" → SQL (asking for count)
@@ -717,6 +718,8 @@ Examples for SQL:
 - "가장 많은 배송을 처리한 기사는 누구인가요?" → SQL (asking for ranking/comparison)
 - "주문 ID 100의 배송 상태는 무엇인가요?" → SQL (asking for specific entity data)
 - "배송 완료된 주문들의 총 금액은?" → SQL (asking for aggregation)
+- "배송 건수 기준으로 성과가 좋은 기사 조회해줘" → SQL (clarification response with criteria = SQL query)
+- "성과가 좋은 기사 조회해줘 (배송 건수로 할게)" → SQL (clarification response with criteria = SQL query)
 
 ### Use RAG workflow when the question:
 **The user wants to understand CONCEPTS, PROCESSES, METHODOLOGIES, or KNOWLEDGE from documents.**

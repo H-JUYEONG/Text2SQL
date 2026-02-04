@@ -27,26 +27,30 @@ class Routing:
         
         messages = state["messages"]
         
-        # 분할된 질문이 있는지 확인
-        split_questions = None
+        # 가장 최근 HumanMessage 찾기
+        last_human_message = None
         for msg in reversed(messages):
-            if isinstance(msg, AIMessage) and hasattr(msg, 'metadata') and msg.metadata:
-                if "split_questions" in msg.metadata:
-                    split_questions = msg.metadata["split_questions"]
-                    break
+            if isinstance(msg, HumanMessage):
+                last_human_message = msg
+                break
         
-        # 분할된 질문이 있으면 첫 번째 질문 사용
+        # 분할된 질문이 있는지 확인 (최근 HumanMessage 이후의 것만)
+        split_questions = None
+        if last_human_message:
+            last_human_index = messages.index(last_human_message) if last_human_message in messages else -1
+            # 최근 HumanMessage 이후의 메시지에서만 split_questions 찾기
+            for msg in reversed(messages[last_human_index:]):
+                if isinstance(msg, AIMessage) and hasattr(msg, 'metadata') and msg.metadata:
+                    if "split_questions" in msg.metadata:
+                        split_questions = msg.metadata["split_questions"]
+                        break
+        
+        # 분할된 질문이 있고, 최근 HumanMessage 이후에 생성된 것만 사용
         if split_questions and len(split_questions) > 0:
             question = split_questions[0]
             logger.info(f"📋 [ROUTING] 분할된 질문 중 첫 번째 질문 사용: {question}")
         else:
-            # 일반적인 경우: 사용자 질문 추출
-            last_human_message = None
-            for msg in reversed(messages):
-                if isinstance(msg, HumanMessage):
-                    last_human_message = msg
-                    break
-            
+            # 일반적인 경우: 가장 최근 HumanMessage 사용
             if not last_human_message:
                 question = messages[0].content if messages else ""
             else:

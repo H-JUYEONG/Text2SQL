@@ -61,6 +61,12 @@ class QuestionAgent:
    - 예: "잘 팔리는 상품" → 판매량 기준? 매출 기준? 기간은?
    - 이 경우 반드시 사용자에게 질문하여 명확히 해야 함
 
+중요: 다음은 모호성이 아닙니다 (CLEAR로 판단):
+- "배송이 완료되지 않은 주문" → 명확함 (배송 상태가 'delivered'가 아닌 것)
+- "배송 중인 주문" → 명확함 (배송 상태가 'in_transit'인 것)
+- "주문 목록", "배송 목록" → 명확함 (특정 테이블의 모든 레코드)
+- 데이터베이스의 상태 필드나 명확한 조건이 있는 경우 → 명확함
+
 중요 규칙:
 - "성과", "인기", "좋은", "나쁜", "많은", "적은" 같은 주관적 표현이 있으면 무조건 "NEEDS_CLARIFICATION"
 - 구체적인 기준(매출액, 건수, 기간 등)이 명시되지 않으면 "NEEDS_CLARIFICATION"
@@ -75,13 +81,26 @@ class QuestionAgent:
         response = self.model.invoke([{"role": "user", "content": ambiguity_analysis_prompt}])
         decision = response.content.strip().upper()
         
+        # 코드 레벨에서 명확한 조건 체크 (명확한 조건이 있으면 CLEAR)
+        clear_conditions = [
+            "완료되지 않은", "완료된", "진행 중인", "대기 중인", "취소된",
+            "배송 완료", "배송 중", "배송 대기", "주문 완료", "주문 취소",
+            "목록", "리스트", "조회", "보여줘", "알려줘"
+        ]
+        question_lower = user_question.lower()
+        has_clear_condition = any(condition in question_lower for condition in clear_conditions)
+        
+        # 명확한 조건이 있으면 CLEAR로 판단
+        if has_clear_condition and "NEEDS_CLARIFICATION" not in decision:
+            decision = "CLEAR"
+            response.content = "CLEAR\n질문에 명확한 조건이 포함되어 있어 자동으로 처리 가능합니다."
+        
         # 코드 레벨에서 모호성 키워드 체크 (이중 안전장치)
         ambiguous_keywords = ["성과", "인기", "좋은", "나쁜", "많은", "적은", "잘", "나쁘게", "인기있는", "인기 있는"]
-        question_lower = user_question.lower()
         has_ambiguous_keyword = any(keyword in question_lower for keyword in ambiguous_keywords)
         
         # 모호성 키워드가 있고, 구체적인 기준이 없으면 강제로 명확화 필요
-        if has_ambiguous_keyword:
+        if has_ambiguous_keyword and not has_clear_condition:
             # 구체적인 기준 키워드 체크
             specific_criteria = ["매출", "건수", "개수", "수량", "금액", "기간", "속도", "시간", "기준", "순위"]
             has_specific_criteria = any(criteria in question_lower for criteria in specific_criteria)
@@ -214,7 +233,25 @@ class QuestionAgent:
                             logger.info("⚠️  [INSUFFICIENT RESPONSE] 사용자 응답이 너무 짧음 - 재질문 필요")
                     else:
                         # 원래 질문과 명확화 응답을 결합
-                        combined_question = f"{original_question} ({clarification_response})"
+                        # SQL 의도를 명확히 하기 위해 명확화 응답을 자연스럽게 통합
+                        # 예: "성과가 좋은 기사 조회해줘" + "배송 건수로 할게" 
+                        # → "배송 건수 기준으로 성과가 좋은 기사 조회해줘"
+                        
+                        # 명확화 응답에서 기준 추출
+                        criteria_keywords = ["건수", "개수", "수량", "금액", "매출", "기간", "속도", "시간", "기준", "순위", "평균", "합계", "최대", "최소"]
+                        has_criteria = any(keyword in clarification_response for keyword in criteria_keywords)
+                        
+                        if has_criteria:
+                            # 기준이 있으면 자연스럽게 통합
+                            if "기준" in clarification_response or "으로" in clarification_response or "로" in clarification_response:
+                                # 이미 "기준으로" 같은 표현이 있으면 그대로 사용
+                                combined_question = f"{clarification_response} {original_question}"
+                            else:
+                                # 기준만 있으면 "기준으로" 추가
+                                combined_question = f"{clarification_response} 기준으로 {original_question}"
+                        else:
+                            # 기준이 없으면 괄호로 추가
+                            combined_question = f"{original_question} ({clarification_response})"
                         
                         if self.enable_logging:
                             logger.info("=" * 80)

@@ -5,7 +5,7 @@ import sys
 sys.dont_write_bytecode = True
 
 from typing import Literal
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from langgraph.graph import MessagesState
 
 from src.agents.prompts import GRADE_PROMPT, REWRITE_PROMPT, GENERATE_ANSWER_PROMPT, get_korean_prompt
@@ -39,7 +39,6 @@ class RAGNodes:
         ]
         
         if any(keyword in user_question for keyword in modification_keywords):
-            from langchain_core.messages import AIMessage
             rejection_message = AIMessage(
                 content="죄송합니다. 문서 생성, 수정, 삭제 등의 작업은 보안상의 이유로 허용되지 않습니다. 문서 조회만 가능합니다."
             )
@@ -51,11 +50,32 @@ class RAGNodes:
             response = self.model.invoke(messages_with_prompt)
             return {"messages": [response]}
         
+        # 이전 대화의 tool_calls가 있는 메시지 필터링
+        # tool_calls가 있는 AIMessage는 tool response가 있어야 하므로, 
+        # tool response가 없는 tool_calls 메시지는 제거
+        filtered_messages = []
+        for i, msg in enumerate(messages):
+            if isinstance(msg, AIMessage) and hasattr(msg, 'tool_calls') and msg.tool_calls:
+                # tool_calls가 있는 메시지인 경우, 다음 메시지가 tool response인지 확인
+                has_tool_response = False
+                if i + 1 < len(messages):
+                    next_msg = messages[i + 1]
+                    if hasattr(next_msg, 'name') and next_msg.name:
+                        # tool response 메시지인 경우
+                        has_tool_response = True
+                
+                # tool response가 없으면 이 메시지를 제거 (이전 대화의 미완료 tool_calls)
+                if not has_tool_response:
+                    continue
+            
+            filtered_messages.append(msg)
+        
+        # 필터링된 메시지 사용
         response = (
             self.model
-            .bind_tools([self.retriever_tool]).invoke(state["messages"])
+            .bind_tools([self.retriever_tool]).invoke(filtered_messages)
         )
-        return {"messages": [response]}
+        return {"messages": state["messages"] + [response]}
     
     def grade_documents(
         self, state: MessagesState
