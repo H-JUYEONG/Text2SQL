@@ -33,12 +33,17 @@ def validate_query_security(query: str) -> Tuple[bool, str]:
     if not query_upper.startswith('SELECT'):
         return False, "SELECT 쿼리만 실행할 수 있습니다."
     
-    # 시스템 테이블 접근 차단 (SQLite의 경우)
-    system_tables = ['sqlite_master', 'sqlite_temp_master', 'sqlite_sequence']
+    # 시스템 테이블/메타데이터 접근 차단 (SQLite, PostgreSQL 공통)
+    system_tables = [
+        # SQLite
+        'SQLITE_MASTER', 'SQLITE_TEMP_MASTER', 'SQLITE_SEQUENCE',
+        # PostgreSQL
+        'PG_CATALOG', 'INFORMATION_SCHEMA'
+    ]
     for table in system_tables:
         if table in query_upper:
-            logger.warning(f"Blocked system table access: {table}")
-            return False, "시스템 테이블에 대한 접근은 허용되지 않습니다."
+            logger.warning(f"Blocked system/metadata table access: {table}")
+            return False, "시스템/메타데이터 테이블에 대한 직접 접근은 허용되지 않습니다."
     
     return True, ""
 

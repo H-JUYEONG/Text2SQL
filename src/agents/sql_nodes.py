@@ -53,7 +53,10 @@ class SQLNodes:
     
     def generate_query(self, state: MessagesState):
         """Generate SQL query - following Custom SQL Agent pattern."""
-        max_results = min(5, self.max_query_results)
+        # 이전에는 하드코딩된 5행으로 제한되어 있어 결과가 불필요하게 잘리는 문제가 있었음.
+        # 이제는 설정된 MAX_QUERY_RESULTS 값을 그대로 사용하여,
+        # 기본적으로 충분한 개수를 허용하되, 실제 LIMIT 사용 여부는 프롬프트 규칙에 맡긴다.
+        max_results = self.max_query_results
         generate_query_system_prompt = get_generate_query_prompt(self.db.dialect, max_results)
         
         system_message = {

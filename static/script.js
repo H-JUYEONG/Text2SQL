@@ -46,7 +46,12 @@ function addMessage(text, type) {
     
     const messageText = document.createElement('div');
     messageText.className = 'message-text';
-    messageText.textContent = text;
+    // Convert markdown-style formatting to HTML
+    let htmlText = text
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')  // **bold** -> <strong>
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')              // *italic* -> <em>
+        .replace(/\n/g, '<br>');                             // newlines -> <br>
+    messageText.innerHTML = htmlText;
     
     const messageTime = document.createElement('div');
     messageTime.className = 'message-time';

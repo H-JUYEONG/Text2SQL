@@ -22,3 +22,6 @@ pillow>=10.0.0
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 
+# 데이터베이스 드라이버
+psycopg2-binary>=2.9.0,<3.0.0
+

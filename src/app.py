@@ -43,10 +43,13 @@ def initialize_agent():
     global agent
     
     # 데이터베이스 확인 및 생성
-    db_path = DATABASE_URI.replace("sqlite:///", "")
-    if not os.path.exists(db_path):
-        print("데이터베이스가 없습니다. 샘플 데이터베이스를 생성합니다...")
-        create_sample_database(db_path)
+    # SQLite인 경우에만 로컬 파일을 자동 생성하고,
+    # PostgreSQL 등 다른 DB는 이미 생성/마이그레이션 되어 있다고 가정합니다.
+    if DATABASE_URI.startswith("sqlite:///"):
+        db_path = DATABASE_URI.replace("sqlite:///", "")
+        if not os.path.exists(db_path):
+            print("데이터베이스가 없습니다. 샘플 SQLite 데이터베이스를 생성합니다...")
+            create_sample_database(db_path)
     
     # RAG 문서 로드 (선택사항)
     vector_store = None
