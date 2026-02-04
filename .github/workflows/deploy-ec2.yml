@@ -64,7 +64,16 @@ jobs:
           
           # 새로 빌드 (앱만) 및 실행
           docker-compose build --no-cache app
+          
+          # PostgreSQL이 완전히 준비될 때까지 대기
+          echo "⏳ Waiting for PostgreSQL to be ready..."
+          sleep 10
+          
           docker-compose up -d
+          
+          # 앱이 시작될 때까지 추가 대기
+          echo "⏳ Waiting for app to start..."
+          sleep 15
           
           # 헬스 체크 (재시도 로직 포함)
           echo "🏥 Waiting for application to be ready..."

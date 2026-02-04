@@ -27,6 +27,10 @@ docker-compose build --no-cache app
 echo "▶️ Starting containers..."
 docker-compose up -d
 
+# PostgreSQL이 완전히 준비될 때까지 대기
+echo "⏳ Waiting for PostgreSQL to be ready..."
+sleep 10
+
 # 헬스 체크 (재시도 로직 포함)
 echo "🏥 Waiting for application to be ready..."
 max_attempts=30

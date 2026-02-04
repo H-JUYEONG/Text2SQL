@@ -8,7 +8,9 @@ sys.dont_write_bytecode = True
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+# 환경 변수가 없을 때만 .env 파일 로드 (Docker 환경 변수가 우선)
+# override=False: 환경 변수가 이미 설정되어 있으면 .env 파일 값으로 덮어쓰지 않음
+load_dotenv(override=False)
 
 # LLM Configuration
 LLM_MODEL = "gpt-4o-mini"  # or "claude-sonnet-4-5-20250929", "gpt-4o", "claude-opus"
