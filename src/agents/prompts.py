@@ -64,18 +64,25 @@ CRITICAL: When the question mentions status, state, or completion status (e.g., 
    - NEVER use values like '배송 완료', '배송중', '대기중', '지연' in SQL - these are Korean translations, NOT database values
    - You MUST check the schema first to see what actual values are stored (typically English lowercase strings)
    
-   MANDATORY STATUS VALUE MAPPING (for deliveries.status column):
-   - Korean "배송 완료" or "완료된" → English 'delivered' (NOT '배송 완료')
-   - Korean "배송중" or "배송 중" → English 'shipped' (NOT '배송중')
-   - Korean "대기중" or "대기" → English 'pending' (NOT '대기중')
-   - Korean "지연" or "지연된" → English 'delayed' (NOT '지연')
+   STATUS VALUE HANDLING (for deliveries.status and other status columns):
+   - Status values in the database are stored in English (e.g., 'delivered', 'shipped', 'pending', 'delayed', 'created')
+   - When the user asks in Korean (e.g., "배송 완료", "배송중"), you MUST translate to the actual English database values
+   - Use the schema information provided to understand what status values exist in the database
+   - Match Korean user queries to the closest English status value based on semantic meaning
+   - Common patterns:
+     * "배송 완료", "완료된" → likely 'delivered'
+     * "배송중", "배송 중", "출고" → likely 'shipped'
+     * "대기", "배정 완료" → likely 'pending'
+     * "지연" → likely 'delayed'
+     * "생성", "출고 전" → likely 'created'
+   - Always check the actual schema to see what values are available
    
    - When checking for "incomplete" or "not completed", use explicit status comparison with the ACTUAL database enum value
    - If user asks "배송이 완료되지 않은", translate this to: status != 'delivered' (English value), NOT status != '배송 완료' (Korean)
    - If user asks "배송 완료된", translate this to: status = 'delivered' (English value), NOT status = '배송 완료' (Korean)
    - NEVER translate status values to other languages in SQL queries - use the actual values stored in the database
    - Check the schema or sample data to understand what status values are actually stored in the database
-   - The deliveries.status column contains these exact values: 'delivered', 'shipped', 'pending', 'delayed' (all lowercase English)
+   - Check the schema dynamically to see what status values actually exist in deliveries.status and other status columns
    - NEVER use "status IS NULL" to check for incomplete states unless the schema explicitly allows NULL
    - When filtering by status from a related table, use INNER JOIN (not LEFT JOIN with NULL check)
    - CRITICAL: When user asks about "not completed" or "incomplete" items, they mean items with status != completion_value, NOT items missing from the related table
@@ -246,24 +253,54 @@ CRITICAL INSTRUCTIONS:
 1. The user asked a question in Korean, and you received SQL query results
 2. Analyze the SQL query to understand what each column in the results represents
 3. Convert the raw query results (tuples, lists) into a natural, readable Korean answer
-4. Format the data in a user-friendly way:
-   - For lists: Use numbered items or bullet points
-   - Include all relevant information from the results
-   - Use the correct column names based on the SQL query (e.g., if query has "driver_id", use "기사 ID", not "주문 ID")
-   - Translate status values to Korean when displaying (e.g., 'delivered' → '배송완료', 'shipped' → '배송중', 'pending' → '대기중', 'delayed' → '지연')
+4. Format the data in a user-friendly, readable way:
+   - CRITICAL: Analyze the SQL query to identify which columns are selected and what they represent
+   - If the question asks about "배송 상태" (delivery status), you MUST show deliveries.status, NOT orders.order_status
+   - If the question asks about "주문 상태" (order status), show orders.order_status
+   - Always match the displayed status column to what the user asked about
+   
+   - For list queries, use a structured format with clear line breaks:
+     * Each item should be on separate lines with proper spacing
+     * Use a format like:
+       "1. 주문 ID: [value]
+        - 고객 ID: [value]
+        - 주문 날짜: [value]
+        - 배송 상태: [value]  (if deliveries.status is in the query)
+        - 총 금액: [value]원"
+     * Avoid cramming everything into one line with "/" separators
+     * Make it easy to scan and read
+   
+   - Translate status values to Korean when displaying:
+     * CRITICAL: Look at the column name in the SQL query to determine which status column you're displaying
+     * For deliveries.status (배송 상태):
+       - 'delivered' → '배송 완료'
+       - 'shipped' → '출고 및 배송 진행 중'
+       - 'pending' → '기사 배정 완료, 출고 대기'
+       - 'delayed' → '지연'
+       - 'created' → '출고 전' (NOT '생성됨' - that's for orders.order_status)
+     * For orders.order_status (주문 상태):
+       - 'created' → '생성됨'
+       - 'assigned' → '배정됨'
+       - 'shipped' → '배송중'
+       - 'delivered' → '배송완료'
+       - 'cancelled' → '취소됨'
+     * CRITICAL: If showing deliveries.status, NEVER use "생성됨" - use "출고 전" for 'created'
+     * CRITICAL: If showing orders.order_status, use "생성됨" for 'created'
+     * Always check the SQL query to see which status column is being displayed
+   
    - Format dates in a readable way (e.g., "2026년 1월 11일")
-   - Format numbers appropriately (e.g., averages, counts)
+   - Format numbers appropriately (e.g., "1,200,000원" with thousand separators)
    - Make the answer conversational and easy to understand
    - CRITICAL: Do NOT use markdown formatting (**, *, #, etc.) - use plain text only
-   - Use simple labels like "주문 ID:", "고객 ID:" without markdown syntax
 
 5. NEVER return raw query results like tuples or lists - always format as natural sentences
 6. If the results are empty, explain that in Korean
 7. VERY IMPORTANT: Look at the SQL query that produced these results (it is provided in the context):
-   - If the SQL contains "LIMIT N", explicitly tell the user that only up to N rows were retrieved.
-   - In that case, NEVER describe the result as "전체", "모두", "전부" or "모든 주문" – instead say
-     "상위 N건만 조회했습니다" or "최대 N건까지만 보여드립니다".
-   - If there is no LIMIT in the SQL, you may describe it as "현재 조건에 해당하는 전체 결과" if appropriate.
+   - Check if the SQL query actually contains "LIMIT N" clause
+   - ONLY if LIMIT is present in the SQL: Tell the user "상위 N건만 조회했습니다" or "최대 N건까지만 보여드립니다"
+   - If there is NO LIMIT in the SQL query: Do NOT say "상위 N건만" or "최대 N건까지만"
+   - If there is NO LIMIT: You may say "총 N건의 [item type]이 조회되었습니다" or just end without mentioning count limits
+   - CRITICAL: Do NOT mention "상위 N건만" or "최대 N건까지만" if the SQL does not have a LIMIT clause
 8. Pay attention to the SQL query structure to correctly interpret column meanings:
    - SELECT driver_id, AVG(...) → first column is "기사 ID" (driver ID), second is the average
    - SELECT driver_name, AVG(...) → first column is "기사 이름" (driver name), second is the average
@@ -275,8 +312,26 @@ CRITICAL INSTRUCTIONS:
 Example format (when driver_name is available):
 "가장 많은 배송을 처리한 기사는 다음과 같습니다:
 
-1. 기사: 김기사 / 배송 횟수: 6회
-2. 기사: 이기사 / 배송 횟수: 5회
+1. 기사: 김기사
+   - 배송 횟수: 6회
+2. 기사: 이기사
+   - 배송 횟수: 5회
+..."
+
+Example format (for order list with delivery status):
+"현재 배송 상태가 '배송 완료'가 아닌 주문 목록은 다음과 같습니다:
+
+1. 주문 ID: 2
+   - 고객 ID: 2
+   - 주문 날짜: 2026년 1월 11일
+   - 배송 상태: 출고 및 배송 진행 중
+   - 총 금액: 1,200,000원
+
+2. 주문 ID: 6
+   - 고객 ID: 6
+   - 주문 날짜: 2026년 1월 14일
+   - 배송 상태: 출고 및 배송 진행 중
+   - 총 금액: 760,000원
 ..."
 
 Example format (when only driver_id is available):
