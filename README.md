@@ -83,7 +83,6 @@ Text2SQL/
 cat > .env << EOF
 OPENAI_API_KEY="your_openai_api_key_here"
 DATABASE_URI="postgresql+psycopg2://text2sql:text2sql@postgres:5432/logistics"
-CHECKPOINT_DB_URI="postgresql+psycopg2://text2sql:text2sql@postgres:5432/logistics"
 USE_DB_CHECKPOINTER="true"
 EOF
 ```
