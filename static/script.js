@@ -33,7 +33,7 @@ function getCurrentTime() {
 }
 
 // Add message to chat
-function addMessage(text, type) {
+function addMessage(text, type, needsUserResponse = false) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${type}-message`;
     
@@ -58,6 +58,52 @@ function addMessage(text, type) {
     messageTime.textContent = getCurrentTime();
     
     content.appendChild(messageText);
+    
+    // 쿼리 승인 요청인 경우 버튼 추가
+    // 마커를 원본 텍스트와 HTML 변환 후 모두 체크
+    // 또는 "SQL 쿼리 실행 승인 요청" 텍스트가 있고 "승인 방법" 텍스트가 없으면 버튼 표시
+    const hasApprovalMarker = text.includes('<!-- QUERY_APPROVAL_BUTTONS -->') || 
+                               text.includes('QUERY_APPROVAL_BUTTONS');
+    
+    const isApprovalRequest = type === 'bot' && 
+                              text.includes('SQL 쿼리 실행 승인 요청') && 
+                              text.includes('생성된 SQL 쿼리:') &&
+                              !text.includes('승인 방법') && 
+                              !text.includes('✅ 승인:') &&
+                              !text.includes('❌ 거부:');
+    
+    if (hasApprovalMarker || isApprovalRequest) {
+        const buttonContainer = document.createElement('div');
+        buttonContainer.className = 'approval-buttons';
+        
+        const approveButton = document.createElement('button');
+        approveButton.className = 'approve-button';
+        approveButton.textContent = '승인';
+        approveButton.onclick = () => handleApproval('승인');
+        
+        const rejectButton = document.createElement('button');
+        rejectButton.className = 'reject-button';
+        rejectButton.textContent = '거부';
+        rejectButton.onclick = () => handleRejection();
+        
+        buttonContainer.appendChild(approveButton);
+        buttonContainer.appendChild(rejectButton);
+        content.appendChild(buttonContainer);
+        
+        // 마커 제거 (원본 텍스트와 HTML 모두)
+        messageText.innerHTML = messageText.innerHTML
+            .replace(/<!--\s*QUERY_APPROVAL_BUTTONS\s*-->/gi, '')
+            .replace(/QUERY_APPROVAL_BUTTONS/gi, '');
+    }
+    
+    // 거부 피드백 요청인 경우 기존 입력창을 피드백 모드로 전환
+    if (type === 'bot' && (text.includes('수정이 필요한 부분을 알려주시면') || text.includes('피드백을 받았습니다'))) {
+        // 기존 입력창을 피드백 입력 모드로 전환
+        userInput.placeholder = '피드백을 입력하세요 (예: 조건이 잘못됨, 컬럼이 틀림, JOIN이 필요함 등)';
+        userInput.dataset.feedbackMode = 'true';
+        userInput.focus();
+    }
+    
     content.appendChild(messageTime);
     
     messageDiv.appendChild(avatar);
@@ -69,6 +115,65 @@ function addMessage(text, type) {
     chatMessages.scrollTop = chatMessages.scrollHeight;
     
     return messageDiv;
+}
+
+// Handle approval button click
+async function handleApproval(action) {
+    await sendApprovalMessage(action);
+}
+
+// Handle rejection button click
+async function handleRejection() {
+    // 거부 메시지 전송 (피드백 없이)
+    // 서버에서 피드백 요청 메시지를 받으면 기존 입력창이 피드백 모드로 전환됨
+    await sendApprovalMessage('거부');
+}
+
+// Handle feedback submit (더 이상 사용하지 않음 - 기존 입력창 사용)
+
+// Send approval/rejection message
+async function sendApprovalMessage(message) {
+    // Disable input
+    userInput.disabled = true;
+    sendButton.disabled = true;
+    
+    // Add user message to chat
+    addMessage(message, 'user');
+    
+    // Show loading message in chat
+    const loadingMessageId = addLoadingMessage();
+    
+    try {
+        // Call API
+        const response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ message: message })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        // Remove loading message and add bot response
+        removeLoadingMessage(loadingMessageId);
+        addMessage(data.response || '죄송합니다. 답변을 생성하는 중 오류가 발생했습니다.', 'bot', data.needs_user_response || false);
+        
+    } catch (error) {
+        console.error('Error:', error);
+        // Remove loading message and add error message
+        removeLoadingMessage(loadingMessageId);
+        addMessage('죄송합니다. 서버와의 통신 중 오류가 발생했습니다. 다시 시도해주세요.', 'bot');
+    } finally {
+        // Re-enable input
+        userInput.disabled = false;
+        sendButton.disabled = false;
+        userInput.focus();
+    }
 }
 
 // Add loading message to chat
@@ -117,11 +222,20 @@ async function sendMessage() {
     
     if (!message) return;
     
+    // 피드백 모드인지 확인
+    const isFeedbackMode = userInput.dataset.feedbackMode === 'true';
+    let messageToSend = message;
+    
+    // 피드백 모드인 경우 "거부: [피드백]" 형식으로 전송
+    if (isFeedbackMode) {
+        messageToSend = `거부: ${message}`;
+    }
+    
     // Disable input
     userInput.disabled = true;
     sendButton.disabled = true;
     
-    // Add user message to chat
+    // Add user message to chat (원본 메시지 표시)
     addMessage(message, 'user');
     
     // Clear input
@@ -138,7 +252,7 @@ async function sendMessage() {
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ message: message })
+            body: JSON.stringify({ message: messageToSend })
         });
         
         if (!response.ok) {
@@ -149,13 +263,25 @@ async function sendMessage() {
         
         // Remove loading message and add bot response
         removeLoadingMessage(loadingMessageId);
-        addMessage(data.response || '죄송합니다. 답변을 생성하는 중 오류가 발생했습니다.', 'bot');
+        addMessage(data.response || '죄송합니다. 답변을 생성하는 중 오류가 발생했습니다.', 'bot', data.needs_user_response || false);
+        
+        // 피드백 모드 해제 (응답 받은 후)
+        if (isFeedbackMode) {
+            userInput.dataset.feedbackMode = 'false';
+            userInput.placeholder = '질문을 입력하세요.';
+        }
         
     } catch (error) {
         console.error('Error:', error);
         // Remove loading message and add error message
         removeLoadingMessage(loadingMessageId);
         addMessage('죄송합니다. 서버와의 통신 중 오류가 발생했습니다. 다시 시도해주세요.', 'bot');
+        
+        // 에러 발생 시에도 피드백 모드 해제
+        if (isFeedbackMode) {
+            userInput.dataset.feedbackMode = 'false';
+            userInput.placeholder = '질문을 입력하세요.';
+        }
     } finally {
         // Re-enable input
         userInput.disabled = false;

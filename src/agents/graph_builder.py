@@ -8,6 +8,7 @@ import logging
 from typing import Literal
 from langgraph.graph import StateGraph, MessagesState, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
+from langchain_core.messages import HumanMessage
 
 from src.agents.prompts import get_korean_prompt
 
@@ -205,10 +206,15 @@ class GraphBuilder:
         )
         
         # 승인 처리 후 실행 또는 종료
-        def should_execute_query(state: MessagesState) -> Literal[END, "run_query"]:
+        def should_execute_query(state: MessagesState) -> Literal[END, "run_query", "generate_query"]:
             """쿼리 승인 처리 후 실행 여부 결정"""
             messages = state["messages"]
             last_msg = messages[-1] if messages else None
+            
+            # 거부 피드백이 있는 경우: 쿼리 재생성
+            if isinstance(last_msg, HumanMessage) and "수정 요청:" in last_msg.content:
+                logger.info("🔄 [QUERY REGENERATION] 거부 피드백 기반 쿼리 재생성으로 라우팅")
+                return "generate_query"
             
             # 마지막 메시지의 메타데이터 확인
             if last_msg and hasattr(last_msg, 'metadata') and last_msg.metadata:
@@ -234,6 +240,8 @@ class GraphBuilder:
             "process_query_approval",
             should_execute_query,
             {
+                "run_query": "run_query",
+                "generate_query": "generate_query",  # 거부 피드백 시 쿼리 재생성
                 END: END,  # 거부 또는 대기
                 "run_query": "run_query",
             },

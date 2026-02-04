@@ -412,14 +412,7 @@ class SQLNodes:
 
 {formatted_query}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-**승인 방법**
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-✅ **승인**: "승인", "실행", "예", "ok", "yes" 등
-❌ **거부**: "거부", "취소", "아니오", "no", "수정" 등
-
-승인하시면 쿼리가 실행되고 결과를 반환합니다.""",
+<!-- QUERY_APPROVAL_BUTTONS -->""",
             metadata={
                 "needs_user_response": True,
                 "workflow_paused": True,
@@ -516,8 +509,19 @@ class SQLNodes:
         # 거부 키워드
         rejection_keywords = ["거부", "취소", "아니오", "no", "n", "수정", "다시", "재생성"]
         
+        # 거부 시 피드백이 포함되어 있는지 확인 (예: "거부: 조건이 잘못됨")
+        is_rejected_with_feedback = False
+        feedback = None
+        if "거부:" in user_response or "거부 " in user_response:
+            is_rejected_with_feedback = True
+            # 피드백 추출
+            if "거부:" in user_response:
+                feedback = user_response.split("거부:")[1].strip()
+            elif "거부 " in user_response:
+                feedback = user_response.split("거부 ", 1)[1].strip()
+        
         is_approved = any(keyword in user_response for keyword in approval_keywords)
-        is_rejected = any(keyword in user_response for keyword in rejection_keywords)
+        is_rejected = any(keyword in user_response for keyword in rejection_keywords) or is_rejected_with_feedback
         
         # 승인된 경우: 쿼리 실행을 위해 run_query로 진행
         if is_approved:
@@ -587,17 +591,56 @@ class SQLNodes:
                 )
                 return {"messages": [error_response]}
         
-        # 거부된 경우: 수정 요청 또는 종료
+        # 거부된 경우: 피드백 처리
         elif is_rejected:
             if self.enable_logging:
                 logger.info("❌ [QUERY REJECTED] 사용자가 쿼리 거부")
             
-            rejection_response = AIMessage(
-                content="쿼리가 거부되었습니다. 다른 방식으로 질문해주시거나, 수정이 필요한 부분을 알려주시면 다시 쿼리를 생성하겠습니다.",
-                metadata={"query_rejected": True},
-                id=messages[-1].id if messages else None
-            )
-            return {"messages": [rejection_response]}
+            # 피드백이 있는 경우: 피드백을 기반으로 쿼리 재생성
+            if is_rejected_with_feedback and feedback:
+                if self.enable_logging:
+                    logger.info(f"📝 [QUERY REJECTION FEEDBACK] 피드백 받음: {feedback}")
+                
+                # 원래 질문과 피드백을 결합하여 새로운 질문 생성
+                original_question = None
+                for msg in reversed(messages):
+                    if isinstance(msg, HumanMessage):
+                        # 이전 HumanMessage 중 쿼리 승인 요청 이전의 질문 찾기
+                        if msg.content and "승인" not in msg.content.lower() and "거부" not in msg.content.lower():
+                            original_question = msg.content
+                            break
+                
+                if original_question:
+                    # 피드백을 포함한 새로운 질문 생성
+                    feedback_question = f"{original_question} (수정 요청: {feedback})"
+                    feedback_message = HumanMessage(content=feedback_question)
+                    
+                    if self.enable_logging:
+                        logger.info(f"🔄 [QUERY REGENERATION] 피드백 기반 쿼리 재생성: {feedback_question}")
+                    
+                    # 새로운 질문으로 쿼리 재생성을 위해 generate_query로 돌아감
+                    return {"messages": [feedback_message]}
+                else:
+                    # 원래 질문을 찾을 수 없는 경우
+                    rejection_response = AIMessage(
+                        content=f"피드백을 받았습니다: {feedback}\n\n원래 질문을 찾을 수 없어 쿼리를 재생성할 수 없습니다. 다시 질문해주세요.",
+                        metadata={"query_rejected": True},
+                        id=messages[-1].id if messages else None
+                    )
+                    return {"messages": [rejection_response]}
+            else:
+                # 피드백이 없는 경우: 피드백 요청
+                rejection_response = AIMessage(
+                    content="쿼리가 거부되었습니다.\n\n수정이 필요한 부분을 알려주시면 그에 맞춰 쿼리를 다시 생성하겠습니다.\n\n예: '조건이 잘못됨', '컬럼이 틀림', 'JOIN이 필요함' 등",
+                    metadata={
+                        "needs_user_response": True,
+                        "workflow_paused": True,
+                        "query_rejected": True,
+                        "waiting_for_feedback": True
+                    },
+                    id=messages[-1].id if messages else None
+                )
+                return {"messages": [rejection_response]}
         
         # 명확하지 않은 응답: 다시 확인 요청
         else:

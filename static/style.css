@@ -273,6 +273,101 @@ body {
     font-size: 13px;
 }
 
+/* Approval Buttons */
+.approval-buttons {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #e0e0e0;
+}
+
+.approve-button,
+.reject-button {
+    flex: 1;
+    padding: 12px 20px;
+    border: none;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    white-space: nowrap;
+}
+
+.approve-button {
+    background: #4caf50;
+    color: white;
+}
+
+.approve-button:hover {
+    background: #45a049;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(76, 175, 80, 0.4);
+}
+
+.reject-button {
+    background: #f44336;
+    color: white;
+}
+
+.reject-button:hover {
+    background: #da190b;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(244, 67, 54, 0.4);
+}
+
+.approve-button:active,
+.reject-button:active {
+    transform: translateY(0);
+}
+
+/* Feedback Container */
+.feedback-container {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #e0e0e0;
+}
+
+.feedback-input {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: vertical;
+    margin-bottom: 12px;
+    transition: border-color 0.3s;
+}
+
+.feedback-input:focus {
+    outline: none;
+    border-color: #5ca8fe;
+}
+
+.feedback-submit-button {
+    padding: 10px 20px;
+    background: #5ca8fe;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.feedback-submit-button:hover {
+    background: #4a9dfe;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(92, 168, 254, 0.4);
+}
+
+.feedback-submit-button:active {
+    transform: translateY(0);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .container {
