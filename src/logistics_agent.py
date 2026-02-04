@@ -17,6 +17,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from src.config import (
     LLM_MODEL,
     LLM_TEMPERATURE,
+    LLM_MAX_TOKENS,
     DATABASE_URI,
     OPENAI_API_KEY,
     ANTHROPIC_API_KEY,
@@ -71,6 +72,7 @@ class LogisticsAgent:
         self.model = init_chat_model(
             self.llm_model,
             temperature=LLM_TEMPERATURE,
+            max_tokens=LLM_MAX_TOKENS,  # 응답이 잘리지 않도록 충분한 토큰 수 설정
         )
         
         # Initialize SQL tools

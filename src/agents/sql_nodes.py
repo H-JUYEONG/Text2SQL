@@ -12,6 +12,7 @@ from langgraph.prebuilt import ToolNode
 
 from src.agents.prompts import get_generate_query_prompt, get_check_query_prompt, get_format_results_prompt, get_korean_prompt
 from src.agents.security import validate_query_security, validate_query_schema, validate_question_schema
+from src.config import LLM_MAX_TOKENS
 
 logger = logging.getLogger(__name__)
 
@@ -305,6 +306,64 @@ class SQLNodes:
             if original_sql_query:
                 break
         
+        # 쿼리 결과 개수 및 복잡도 분석하여 동적으로 토큰 수 계산
+        result_count = 1
+        result_complexity = 1.0  # 복잡도 계수 (1.0 = 기본, 2.0 = 매우 복잡)
+        
+        if query_results:
+            # 튜플 형태의 결과 개수 추정
+            if isinstance(query_results, str):
+                # '),' 패턴으로 행 개수 추정
+                result_count = max(1, query_results.count('),') + (1 if query_results.strip().endswith(')') else 0))
+                # 결과 데이터의 실제 길이로 복잡도 추정
+                avg_row_length = len(query_results) / max(result_count, 1)
+                # 평균 행 길이가 200자 이상이면 복잡한 항목 (주문 목록 등)
+                if avg_row_length > 200:
+                    result_complexity = 2.0  # 복잡한 항목 (상품명, 단가, 수량 등 많은 정보)
+                elif avg_row_length > 100:
+                    result_complexity = 1.5  # 중간 복잡도
+            elif isinstance(query_results, (list, tuple)):
+                result_count = len(query_results)
+                # 리스트의 경우 첫 번째 항목 길이로 복잡도 추정
+                if result_count > 0:
+                    first_item_str = str(query_results[0])
+                    if len(first_item_str) > 200:
+                        result_complexity = 2.0
+                    elif len(first_item_str) > 100:
+                        result_complexity = 1.5
+        
+        # SQL 쿼리 분석으로 복잡도 추가 판단
+        if original_sql_query:
+            query_upper = original_sql_query.upper()
+            # JOIN이 많거나 컬럼이 많으면 복잡한 항목
+            join_count = query_upper.count('JOIN')
+            select_columns = query_upper.count('SELECT') - query_upper.count('SELECT COUNT')
+            if join_count >= 2 or select_columns > 5:
+                result_complexity = max(result_complexity, 1.8)  # 복잡한 쿼리
+        
+        # 결과 개수와 복잡도를 고려한 토큰 수 계산
+        # 기본 항목당 토큰: 100토큰
+        # 복잡한 항목: 100 * 복잡도 계수 = 200토큰 (주문 목록 등)
+        tokens_per_item = 100 * result_complexity
+        base_tokens = result_count * tokens_per_item
+        overhead_tokens = 1000  # 시스템 메시지, 요약 등 오버헤드
+        
+        # 최소 2000 토큰, 최대 LLM_MAX_TOKENS
+        estimated_tokens = min(
+            int(base_tokens + overhead_tokens),
+            self.agent.max_query_results * 200  # 최대 결과 수 * 최대 항목당 토큰
+        )
+        # 최소값과 최대값 사이로 제한
+        estimated_tokens = max(2000, min(estimated_tokens, LLM_MAX_TOKENS))
+        
+        dynamic_max_tokens = estimated_tokens
+        
+        # 동적 토큰 수로 모델 설정 (임시로 max_tokens 조정)
+        original_max_tokens = None
+        if hasattr(self.model, 'max_tokens'):
+            original_max_tokens = self.model.max_tokens
+            self.model.max_tokens = dynamic_max_tokens
+        
         # 쿼리 결과를 자연어로 포맷팅
         format_instruction = {
             "role": "system",
@@ -325,10 +384,19 @@ class SQLNodes:
         if self.enable_logging:
             logger.info("=" * 80)
             logger.info("📝 [RESULT FORMATTING] 쿼리 결과를 자연어로 포맷팅 중...")
+            logger.info(f"추정된 결과 개수: {result_count}건")
+            logger.info(f"복잡도 계수: {result_complexity:.1f}x")
+            logger.info(f"항목당 예상 토큰: {tokens_per_item:.0f} 토큰")
+            logger.info(f"동적 토큰 수: {dynamic_max_tokens} 토큰 (최대: {LLM_MAX_TOKENS})")
             logger.info(f"원본 결과: {str(query_results)[:200]}...")
             logger.info("=" * 80)
         
-        response = self.model.invoke(messages_to_send)
+        try:
+            response = self.model.invoke(messages_to_send)
+        finally:
+            # 원래 max_tokens 복원
+            if original_max_tokens is not None:
+                self.model.max_tokens = original_max_tokens
         
         if self.enable_logging:
             logger.info(f"✅ [FORMATTED RESPONSE] 포맷팅 완료: {str(response.content)[:200]}...")

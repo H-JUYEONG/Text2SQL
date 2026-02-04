@@ -13,6 +13,12 @@ load_dotenv()
 # LLM Configuration
 LLM_MODEL = "gpt-4o-mini"  # or "claude-sonnet-4-5-20250929", "gpt-4o", "claude-opus"
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0"))
+# LLM 응답 최대 토큰 수 설정
+# 기업 환경 고려: 100개 결과도 처리 가능하도록 충분한 토큰 수 필요
+# 항목당 토큰 수: 간단한 항목 80-100토큰, 복잡한 항목(주문 목록 등) 150-250토큰
+# 기본값: 8000 토큰 (100개 * 80토큰 = 8000, 복잡한 항목 고려 시 더 필요)
+# 환경변수로 조정 가능: LLM_MAX_TOKENS=10000 (더 긴 응답 필요 시)
+LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "8000"))  # LLM 응답 최대 토큰 수
 
 # Embeddings Configuration
 EMBEDDINGS_MODEL = os.getenv("EMBEDDINGS_MODEL", "text-embedding-3-large")
@@ -33,7 +39,7 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 # Enterprise Configuration
 MAX_QUERY_RESULTS = int(os.getenv("MAX_QUERY_RESULTS", "100"))  # 최대 결과 수 제한
 SMALL_RESULT_THRESHOLD = int(os.getenv("SMALL_RESULT_THRESHOLD", "50"))  # 이 개수 이하면 LIMIT 없이 전체 조회
-LIMIT_FOR_LARGE_RESULTS = int(os.getenv("LIMIT_FOR_LARGE_RESULTS", "50"))  # 건수가 많을 때 적용할 LIMIT
+LIMIT_FOR_LARGE_RESULTS = int(os.getenv("LIMIT_FOR_LARGE_RESULTS", "100"))  # 건수가 많을 때 적용할 LIMIT (기업 환경: 100개)
 QUERY_TIMEOUT_SECONDS = int(os.getenv("QUERY_TIMEOUT_SECONDS", "30"))  # 쿼리 타임아웃
 ENABLE_QUERY_LOGGING = os.getenv("ENABLE_QUERY_LOGGING", "true").lower() == "true"  # 쿼리 로깅 활성화
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")  # 로깅 레벨

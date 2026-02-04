@@ -73,23 +73,23 @@ For list queries (SELECT queries that return multiple rows), you MUST follow thi
    - This helps determine if results are small or large
 
 2. THEN, generate the main SELECT query with conditional LIMIT:
-   - If the COUNT result is 50 or less: Generate the SELECT query WITHOUT LIMIT (show all results)
-   - If the COUNT result is more than 50: Generate the SELECT query WITH LIMIT 50
+   - If the COUNT result is 100 or less: Generate the SELECT query WITHOUT LIMIT (show all results)
+   - If the COUNT result is more than 100: Generate the SELECT query WITH LIMIT 100
    - Store the total count information so it can be mentioned in the final answer
 
 3. When generating the main SELECT query:
-   - If COUNT <= 50: No LIMIT clause
-   - If COUNT > 50: Add LIMIT 50 clause
+   - If COUNT <= 100: No LIMIT clause
+   - If COUNT > 100: Add LIMIT 100 clause
    - Always include the total count in your response format
 
 4. IMPORTANT: If you cannot execute COUNT first (e.g., tool limitations), apply this rule:
-   - For questions asking for "전체", "모두", "전부", "전체 목록": Try without LIMIT first, but if results seem large, use LIMIT 50
-   - For other list questions: Use LIMIT 50 by default for safety
+   - For questions asking for "전체", "모두", "전부", "전체 목록": Try without LIMIT first, but if results seem large, use LIMIT 100
+   - For other list questions: Use LIMIT 100 by default for safety
    - Always mention "총 N건 중" or "총 N건" when showing results
 
-5. When LIMIT 50 is applied, you MUST inform the user:
-   - "총 [total_count]건 중 상위 50건만 보여드립니다"
-   - NOT just "50건만 조회했습니다" without mentioning the total
+5. When LIMIT 100 is applied, you MUST inform the user:
+   - "총 [total_count]건 중 상위 100건만 보여드립니다"
+   - NOT just "100건만 조회했습니다" without mentioning the total
 
 MANDATORY RULE FOR ID COLUMNS (MUST FOLLOW):
 - If your SELECT clause contains customer_id, driver_id, or product_id:
@@ -480,6 +480,18 @@ def get_format_results_prompt() -> str:
     """Get the system prompt for formatting query results."""
     return """You are a helpful assistant that converts SQL query results into natural, conversational Korean answers.
 
+CRITICAL: RESPONSE COMPLETENESS AND EFFICIENCY:
+- You MUST provide a COMPLETE response that includes ALL query results
+- NEVER truncate or cut off your response in the middle
+- If there are 100 results, you MUST show all 100 results completely
+- Do NOT stop mid-sentence or mid-item - always finish the complete response
+- However, be CONCISE and EFFICIENT in your formatting:
+  * Use compact but readable format
+  * Avoid unnecessary repetition
+  * Keep each item description brief but informative
+  * Use line breaks and simple separators (/, ·) for readability
+- Complete your response with proper closing statements (e.g., "총 100건의 데이터가 조회되었습니다")
+
 CRITICAL INSTRUCTIONS:
 1. The user asked a question in Korean, and you received SQL query results
 2. Analyze the SQL query to understand what each column in the results represents
@@ -549,9 +561,9 @@ CRITICAL INSTRUCTIONS:
 6. If the results are empty, explain that in Korean
 7. VERY IMPORTANT: Look at the SQL query that produced these results (it is provided in the context):
    - Check if the SQL query actually contains "LIMIT N" clause
-   - If LIMIT 50 is present in the SQL:
-     * You MUST mention the total count if available: "총 [total_count]건 중 상위 50건만 보여드립니다"
-     * If total count is not available, say: "상위 50건만 조회했습니다. 전체 데이터가 더 많을 수 있습니다."
+   - If LIMIT 100 is present in the SQL:
+     * You MUST mention the total count if available: "총 [total_count]건 중 상위 100건만 보여드립니다"
+     * If total count is not available, say: "상위 100건만 조회했습니다. 전체 데이터가 더 많을 수 있습니다."
    - If there is NO LIMIT in the SQL query:
      * Count the actual number of rows in the results
      * Say "총 [count]건의 [item type]이 조회되었습니다" or "총 [count]건입니다"
