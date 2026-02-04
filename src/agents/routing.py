@@ -71,7 +71,11 @@ class Routing:
         for msg in reversed(messages):
             if isinstance(msg, AIMessage) and msg.content:
                 decision = msg.content.strip().upper()
-                if "SQL" in decision:
+                # REJECT 체크 (최우선)
+                if "REJECT" in decision:
+                    selected_workflow = "reject_workflow"
+                    break
+                elif "SQL" in decision:
                     selected_workflow = "sql_workflow"
                     break
                 elif "RAG" in decision:
@@ -85,7 +89,8 @@ class Routing:
         workflow_name = {
             "sql_workflow": "SQL 워크플로우 (데이터베이스 조회)",
             "rag_workflow": "RAG 워크플로우 (문서 검색)",
-            "direct_response": "DIRECT 응답 (직접 답변)"
+            "direct_response": "DIRECT 응답 (직접 답변)",
+            "reject_workflow": "REJECT 워크플로우 (보안 거절)"
         }.get(selected_workflow, selected_workflow)
         
         logger.info("=" * 80)

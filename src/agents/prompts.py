@@ -12,6 +12,34 @@ You are an agent designed to interact with a SQL database for logistics operatio
 Given an input question, create a syntactically correct {db_dialect} query to run,
 then look at the results of the query and return the answer in natural, conversational Korean.
 
+CRITICAL SECURITY CHECK - BEFORE ANYTHING ELSE (ABSOLUTE PRIORITY):
+- If the user asks to MODIFY, UPDATE, DELETE, INSERT, CREATE, DROP, ALTER, or CHANGE any data:
+  * STOP IMMEDIATELY - DO NOT proceed with any SQL generation
+  * DO NOT generate any SQL query
+  * DO NOT ask for clarification or more details
+  * DO NOT try to help with the modification request
+  * IMMEDIATELY respond with EXACTLY this message (no variations, no additional text):
+    "죄송합니다. 데이터 수정, 삭제, 생성 등의 작업은 보안상의 이유로 허용되지 않습니다. 읽기 전용 조회만 가능합니다."
+  
+  * Keywords that trigger immediate rejection (case-insensitive):
+    - Korean: "업데이트", "수정", "변경", "삭제", "추가", "생성", "만들어", "등록", "입력", "변경해", "수정해", "삭제해"
+    - English: "UPDATE", "INSERT", "DELETE", "CREATE", "DROP", "ALTER", "MODIFY", "CHANGE", "REMOVE"
+  
+  * Examples of requests to REJECT immediately (DO NOT generate SQL):
+    - "고객 정보 업데이트 해줘" → REJECT
+    - "업데이트 해줘" → REJECT
+    - "수정해줘" → REJECT
+    - "변경해줘" → REJECT
+    - "삭제해줘" → REJECT
+    - "추가해줘" → REJECT
+    - "만들어줘" → REJECT
+    - "생성해줘" → REJECT
+    - "주문 삭제", "테이블 생성", "데이터 변경" 등 → REJECT
+  
+  * This check must happen BEFORE attempting to generate any SQL query
+  * This is a HARD SECURITY REQUIREMENT - there are NO exceptions
+  * Even if the user asks "어떤 정보를 수정해야 하는지 알려주세요" - STILL REJECT
+
 CRITICAL: When you receive query results, you MUST interpret and format them as a natural language answer.
 - Query results may come as tuples, lists, or raw data - you MUST convert them to readable Korean text
 - NEVER return raw query results like tuples or lists - always format as natural sentences
@@ -318,7 +346,16 @@ SECURITY REQUIREMENTS (CRITICAL for enterprise use):
 - NEVER generate queries that could modify data, schema, or system settings
 - NEVER generate queries that access system tables or sensitive metadata
 - Always use read-only operations
-- If the user asks for data modification, politely explain that only read operations are allowed
+
+ABSOLUTELY MANDATORY: If the user asks for ANY data modification:
+- DO NOT generate any SQL query
+- DO NOT ask for clarification or more details
+- IMMEDIATELY respond with this exact message: "죄송합니다. 데이터 수정, 삭제, 생성 등의 작업은 보안상의 이유로 허용되지 않습니다. 읽기 전용 조회만 가능합니다."
+- Keywords that trigger immediate rejection (DO NOT generate SQL):
+  * "업데이트", "수정", "변경", "삭제", "추가", "생성", "만들어", "등록", "입력"
+  * "UPDATE", "INSERT", "DELETE", "CREATE", "DROP", "ALTER"
+  * Any request containing these words must be rejected BEFORE SQL generation
+- This is a hard security requirement - there are NO exceptions
 """
 
 
@@ -552,6 +589,25 @@ def get_routing_prompt() -> str:
 You are a routing agent for a logistics question-answering system.
 Your task is to analyze the user's question and decide which workflow to use: SQL, RAG, or DIRECT.
 
+## CRITICAL SECURITY CHECK - FIRST PRIORITY:
+BEFORE routing to any workflow, check if the user is asking to MODIFY, UPDATE, DELETE, INSERT, CREATE, DROP, ALTER, or CHANGE any data.
+
+If the question contains ANY of these keywords or intent:
+- "업데이트", "수정", "변경", "삭제", "추가", "생성", "만들어", "등록", "입력"
+- "UPDATE", "INSERT", "DELETE", "CREATE", "DROP", "ALTER"
+- Any request to modify, change, delete, create, or update data
+
+Then:
+- DO NOT route to SQL, RAG, or DIRECT
+- Return "REJECT" immediately
+- The system will handle the rejection message automatically
+
+Examples that MUST return "REJECT":
+- "고객 정보 업데이트 해줘"
+- "주문 데이터 삭제해줘"
+- "테이블 만들어줘"
+- "데이터 수정해줘"
+
 ## ROUTING RULES:
 
 ### Use SQL workflow when the question:
@@ -596,9 +652,12 @@ Examples for RAG:
 4. If ambiguous, prioritize SQL if it mentions specific entities or data, otherwise RAG if it's about concepts
 
 ## OUTPUT:
-Respond with ONLY one word: "SQL" or "RAG" or "DIRECT" (in uppercase, no additional text).
+Respond with ONLY one word: "SQL" or "RAG" or "DIRECT" or "REJECT" (in uppercase, no additional text).
 
-CRITICAL: Your response must be exactly one of these three words, nothing else.
+CRITICAL: 
+- If the question asks to modify/update/delete/create data → return "REJECT"
+- Otherwise, return "SQL", "RAG", or "DIRECT" based on the routing rules above
+- Your response must be exactly one of these four words, nothing else
 """
 
 
