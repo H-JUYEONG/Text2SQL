@@ -25,11 +25,14 @@ from src.config import (
     QUERY_TIMEOUT_SECONDS,
     ENABLE_QUERY_LOGGING,
     LOG_LEVEL,
+    CHECKPOINT_DB_URI,
+    USE_DB_CHECKPOINTER,
 )
 
 from src.agents.sql_nodes import SQLNodes
 from src.agents.rag_nodes import RAGNodes
 from src.agents.routing import Routing
+from src.agents.question_agent import QuestionAgent
 from src.agents.graph_builder import GraphBuilder
 
 # 로깅 설정
@@ -102,12 +105,59 @@ class LogisticsAgent:
             self.retriever_tool = self._create_rag_tool()
         
         # Initialize checkpointer for thread-scoped memory
-        self.checkpointer = MemorySaver()
+        # HITL을 위해 DB 기반 체크포인터 사용 가능 (선택사항)
+        # 최신 LangGraph 방식: PostgresSaver 사용 (3.0.4+)
+        if USE_DB_CHECKPOINTER:
+            try:
+                # 최신 LangGraph checkpoint-postgres 3.0.4+ 방식
+                from langgraph.checkpoint.postgres import PostgresSaver
+                
+                # SQLAlchemy 형식(postgresql+psycopg2://)을 LangGraph 형식(postgresql://)으로 변환
+                checkpoint_uri = CHECKPOINT_DB_URI.replace("postgresql+psycopg2://", "postgresql://")
+                
+                # 최신 방식: from_conn_string()은 context manager를 반환
+                # context manager를 사용하여 PostgresSaver 인스턴스 얻기
+                cm = PostgresSaver.from_conn_string(checkpoint_uri)
+                # context manager 진입하여 실제 인스턴스 얻기
+                self.checkpointer = cm.__enter__()
+                # context manager를 저장하여 나중에 정리할 수 있도록 함
+                self._checkpoint_cm = cm
+                
+                # 테이블 자동 생성 (setup 메서드 호출)
+                # checkpoints, checkpoint_blobs 테이블이 없으면 자동 생성
+                try:
+                    self.checkpointer.setup()
+                    logger.info("✅ 체크포인트 테이블 생성 완료 (checkpoints, checkpoint_blobs)")
+                except Exception as setup_error:
+                    # 테이블이 이미 존재하는 경우 무시
+                    if "already exists" not in str(setup_error).lower():
+                        logger.warning(f"⚠️  체크포인트 테이블 생성 중 오류 (무시 가능): {setup_error}")
+                
+                logger.info("✅ DB 기반 체크포인터 초기화 완료 (PostgreSQL - 최신 방식)")
+                logger.info(f"   체크포인트 DB: {checkpoint_uri.split('@')[1] if '@' in checkpoint_uri else checkpoint_uri}")
+            except ImportError as e:
+                logger.warning("⚠️  langgraph-checkpoint-postgres 패키지가 없습니다. MemorySaver를 사용합니다.")
+                logger.warning("   DB 체크포인터를 사용하려면: pip install langgraph-checkpoint-postgres")
+                logger.debug(f"   ImportError: {e}")
+                self.checkpointer = MemorySaver()
+                self._checkpoint_cm = None
+            except Exception as e:
+                logger.warning(f"⚠️  DB 체크포인터 초기화 실패: {e}. MemorySaver를 사용합니다.")
+                logger.warning(f"   에러 상세: {type(e).__name__}: {str(e)}")
+                import traceback
+                logger.debug(traceback.format_exc())
+                self.checkpointer = MemorySaver()
+                self._checkpoint_cm = None
+        else:
+            self.checkpointer = MemorySaver()
+            self._checkpoint_cm = None
+            logger.info("✅ 메모리 기반 체크포인터 초기화 완료 (MemorySaver)")
         
         # Initialize modular components
         self.sql_nodes = SQLNodes(self)
         self.rag_nodes = RAGNodes(self)
         self.routing = Routing(self)
+        self.question_agent = QuestionAgent(self)
         self.graph_builder = GraphBuilder(self)
         
         # Build the graph

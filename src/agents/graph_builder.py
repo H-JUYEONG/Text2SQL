@@ -23,6 +23,7 @@ class GraphBuilder:
         self.sql_nodes = agent.sql_nodes
         self.rag_nodes = agent.rag_nodes
         self.routing = agent.routing
+        self.question_agent = agent.question_agent
         self.get_schema_tool = agent.get_schema_tool
         self.retriever_tool = agent.retriever_tool
         self.model = agent.model
@@ -38,6 +39,8 @@ class GraphBuilder:
         workflow.add_node("get_schema", ToolNode([self.get_schema_tool]))
         workflow.add_node("generate_query", self.sql_nodes.generate_query)
         workflow.add_node("check_query", self.sql_nodes.check_query)
+        workflow.add_node("request_query_approval", self.sql_nodes.request_query_approval)  # HITL: 쿼리 승인 요청
+        workflow.add_node("process_query_approval", self.sql_nodes.process_query_approval)  # HITL: 승인/거부 처리
         workflow.add_node("run_query", self.sql_nodes._run_query_with_logging)
         workflow.add_node("format_results", self.sql_nodes.format_query_results)
         
@@ -47,6 +50,11 @@ class GraphBuilder:
             workflow.add_node("retrieve", ToolNode([self.retriever_tool]))
         workflow.add_node("rewrite_question", self.rag_nodes.rewrite_question)
         workflow.add_node("generate_answer", self.rag_nodes.generate_answer)
+        
+        # Question Agent Nodes
+        workflow.add_node("analyze_question", self.question_agent.analyze_question)
+        workflow.add_node("clarify_question", self.question_agent.clarify_question)
+        workflow.add_node("split_question", self.question_agent.split_question)
         
         # Routing Node
         workflow.add_node("route_initial_query", self.routing.route_initial_query_node)
@@ -73,7 +81,29 @@ class GraphBuilder:
         workflow.add_node("reject_response", reject_response)
         
         # Edges
-        workflow.add_edge(START, "route_initial_query")
+        workflow.add_edge(START, "analyze_question")
+        
+        # Question Agent workflow
+        workflow.add_conditional_edges(
+            "analyze_question",
+            self.question_agent.should_clarify,
+            {
+                "clarify_question": "clarify_question",
+                "split_question": "split_question",
+                END: END,
+            },
+        )
+        
+        workflow.add_conditional_edges(
+            "clarify_question",
+            self.question_agent.should_continue_after_clarification,
+            {
+                "split_question": "split_question",
+                END: END,
+            },
+        )
+        
+        workflow.add_edge("split_question", "route_initial_query")
         
         # Route to SQL or RAG workflow
         workflow.add_conditional_edges(
@@ -84,6 +114,7 @@ class GraphBuilder:
                 "rag_workflow": "generate_query_or_respond",
                 "direct_response": "direct_response",
                 "reject_workflow": "reject_response",
+                "process_query_approval": "process_query_approval",  # HITL: 쿼리 승인 응답 처리
             },
         )
         
@@ -121,7 +152,76 @@ class GraphBuilder:
                 END: END,
             },
         )
-        workflow.add_edge("check_query", "run_query")
+        # check_query 후 쿼리 승인 요청 (HITL)
+        workflow.add_edge("check_query", "request_query_approval")
+        
+        # 쿼리 승인 요청 후 사용자 응답 대기 또는 승인 처리
+        def should_process_approval(state: MessagesState) -> Literal[END, "process_query_approval"]:
+            """쿼리 승인 요청 후 사용자 응답이 있는지 확인"""
+            messages = state["messages"]
+            last_msg = messages[-1] if messages else None
+            
+            # 마지막 메시지가 승인 요청인지 확인
+            if last_msg and hasattr(last_msg, 'metadata') and last_msg.metadata:
+                if last_msg.metadata.get("query_approval_pending", False):
+                    # 승인 요청 메시지인 경우, 사용자 응답을 기다림 (END)
+                    # 다음 호출 시 사용자 응답이 있으면 process_query_approval로 라우팅됨
+                    return END
+            
+            # 마지막 메시지가 HumanMessage면 사용자 응답이 온 것
+            # (승인 요청 후 사용자가 응답한 경우)
+            if isinstance(last_msg, HumanMessage):
+                # 이전 메시지 중 승인 요청이 있었는지 확인
+                for msg in reversed(messages[:-1]):
+                    if hasattr(msg, 'metadata') and msg.metadata:
+                        if msg.metadata.get("query_approval_pending", False):
+                            return "process_query_approval"
+            
+            return END
+        
+        workflow.add_conditional_edges(
+            "request_query_approval",
+            should_process_approval,
+            {
+                END: END,  # 사용자 응답 대기
+                "process_query_approval": "process_query_approval",
+            },
+        )
+        
+        # 승인 처리 후 실행 또는 종료
+        def should_execute_query(state: MessagesState) -> Literal[END, "run_query"]:
+            """쿼리 승인 처리 후 실행 여부 결정"""
+            messages = state["messages"]
+            last_msg = messages[-1] if messages else None
+            
+            # 마지막 메시지의 메타데이터 확인
+            if last_msg and hasattr(last_msg, 'metadata') and last_msg.metadata:
+                # 승인된 경우
+                if last_msg.metadata.get("query_approved", False):
+                    return "run_query"
+                # 거부된 경우
+                if last_msg.metadata.get("query_rejected", False):
+                    return END
+                # 명확하지 않은 응답으로 다시 확인 요청
+                if last_msg.metadata.get("needs_user_response", False):
+                    return END
+            
+            # tool_call이 있으면 실행 (승인 후 tool_call이 추가된 경우)
+            if last_msg and hasattr(last_msg, 'tool_calls') and last_msg.tool_calls:
+                for tool_call in last_msg.tool_calls:
+                    if tool_call.get('name') == 'sql_db_query':
+                        return "run_query"
+            
+            return END
+        
+        workflow.add_conditional_edges(
+            "process_query_approval",
+            should_execute_query,
+            {
+                END: END,  # 거부 또는 대기
+                "run_query": "run_query",
+            },
+        )
         
         # run_query 후 조건부로 format_results, generate_query 또는 END
         def should_retry_after_query(state: MessagesState) -> Literal[END, "format_results", "generate_query"]:

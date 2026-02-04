@@ -266,6 +266,253 @@ class SQLNodes:
         
         return {"messages": [response]}
     
+    def request_query_approval(self, state: MessagesState):
+        """기업용 HITL: 생성된 SQL 쿼리를 사용자에게 보여주고 승인 요청"""
+        messages = state["messages"]
+        
+        # check_query에서 반환한 메시지에서 쿼리 추출
+        query = None
+        tool_call_to_save = None
+        
+        # 가장 최근의 tool_calls가 있는 메시지 찾기 (check_query에서 반환한 것)
+        for msg in reversed(messages):
+            if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                for tool_call in msg.tool_calls:
+                    if tool_call.get('name') == 'sql_db_query':
+                        query = tool_call.get('args', {}).get('query', '')
+                        tool_call_to_save = tool_call  # 나중에 사용하기 위해 저장
+                        break
+                if query:
+                    break
+        
+        if not query:
+            # 쿼리를 찾을 수 없는 경우 에러
+            if self.enable_logging:
+                logger.error("❌ [QUERY APPROVAL] 쿼리를 찾을 수 없습니다.")
+            error_response = AIMessage(
+                content="쿼리를 찾을 수 없습니다. 다시 시도해주세요.",
+                id=messages[-1].id if messages else None
+            )
+            return {"messages": [error_response]}
+        
+        # 사용자에게 쿼리 승인 요청
+        # tool_call 정보도 metadata에 저장하여 나중에 쉽게 찾을 수 있도록
+        
+        # 쿼리를 읽기 쉽게 포맷팅 (들여쓰기 및 줄바꿈)
+        formatted_query = self._format_sql_query(query)
+        
+        approval_message = AIMessage(
+            content=f"""🔍 **SQL 쿼리 실행 승인 요청**
+
+다음 쿼리를 실행하려고 합니다. 검토 후 승인해주세요.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+**생성된 SQL 쿼리:**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+```sql
+{formatted_query}
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+**승인 방법**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ **승인**: "승인", "실행", "예", "ok", "yes" 등
+❌ **거부**: "거부", "취소", "아니오", "no", "수정" 등
+
+승인하시면 쿼리가 실행되고 결과를 반환합니다.""",
+            metadata={
+                "needs_user_response": True,
+                "workflow_paused": True,
+                "query_approval_pending": True,
+                "pending_query": query,
+                "pending_tool_call": tool_call_to_save  # tool_call도 저장
+            },
+            id=messages[-1].id if messages else None
+        )
+        
+        if self.enable_logging:
+            logger.info("=" * 80)
+            logger.info("🔍 [QUERY APPROVAL REQUEST] 사용자에게 쿼리 승인 요청")
+            logger.info(f"SQL: {query}")
+            logger.info("=" * 80)
+        
+        return {"messages": [approval_message]}
+    
+    def _format_sql_query(self, query: str) -> str:
+        """SQL 쿼리를 읽기 쉽게 포맷팅"""
+        import re
+        
+        # 기본 포맷팅: 키워드 대문자화 및 줄바꿈
+        query = query.strip()
+        
+        # 주요 SQL 키워드를 대문자로 변환
+        keywords = [
+            'SELECT', 'FROM', 'WHERE', 'JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 
+            'FULL JOIN', 'ON', 'GROUP BY', 'ORDER BY', 'HAVING', 'UNION', 'INSERT', 
+            'UPDATE', 'DELETE', 'CREATE', 'ALTER', 'DROP', 'AND', 'OR', 'NOT', 
+            'IN', 'EXISTS', 'LIKE', 'BETWEEN', 'AS', 'COUNT', 'SUM', 'AVG', 'MAX', 'MIN',
+            'DISTINCT', 'LIMIT', 'OFFSET', 'ASC', 'DESC'
+        ]
+        
+        # 키워드 대문자화 (대소문자 구분 없이, 긴 키워드부터)
+        for keyword in sorted(keywords, key=len, reverse=True):
+            pattern = re.compile(r'\b' + re.escape(keyword) + r'\b', re.IGNORECASE)
+            query = pattern.sub(keyword, query)
+        
+        # 한 줄 쿼리인 경우 줄바꿈으로 분리
+        if '\n' not in query or len(query.split('\n')) == 1:
+            # SELECT, FROM, WHERE 등을 줄바꿈으로 분리
+            query = re.sub(r'\s+(FROM)\s+', r'\n\1 ', query, flags=re.IGNORECASE)
+            query = re.sub(r'\s+(WHERE)\s+', r'\n\1 ', query, flags=re.IGNORECASE)
+            query = re.sub(r'\s+(JOIN|INNER JOIN|LEFT JOIN|RIGHT JOIN|FULL JOIN)\s+', r'\n  \1 ', query, flags=re.IGNORECASE)
+            query = re.sub(r'\s+(ON)\s+', r'\n    \1 ', query, flags=re.IGNORECASE)
+            query = re.sub(r'\s+(GROUP BY|ORDER BY|HAVING)\s+', r'\n\1 ', query, flags=re.IGNORECASE)
+            query = re.sub(r'\s+(AND|OR)\s+', r'\n  \1 ', query, flags=re.IGNORECASE)
+        
+        # 들여쓰기 정리
+        lines = query.split('\n')
+        formatted_lines = []
+        indent_level = 0
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            # FROM, WHERE, GROUP BY, ORDER BY는 들여쓰기 없음
+            if re.match(r'^(FROM|WHERE|GROUP BY|ORDER BY|HAVING)', line, re.IGNORECASE):
+                indent_level = 0
+            # JOIN은 2칸 들여쓰기
+            elif re.match(r'^(JOIN|INNER JOIN|LEFT JOIN|RIGHT JOIN|FULL JOIN)', line, re.IGNORECASE):
+                indent_level = 1
+            # ON은 3칸 들여쓰기
+            elif re.match(r'^(ON)', line, re.IGNORECASE):
+                indent_level = 2
+            # AND, OR는 1칸 들여쓰기
+            elif re.match(r'^(AND|OR)', line, re.IGNORECASE):
+                indent_level = 1
+            
+            formatted_lines.append('  ' * indent_level + line)
+        
+        return '\n'.join(formatted_lines)
+    
+    def process_query_approval(self, state: MessagesState):
+        """사용자의 쿼리 승인/거부 응답 처리"""
+        messages = state["messages"]
+        
+        # 마지막 사용자 메시지 찾기
+        user_response = None
+        for msg in reversed(messages):
+            if isinstance(msg, HumanMessage):
+                user_response = msg.content.lower().strip()
+                break
+        
+        if not user_response:
+            # 사용자 응답이 없는 경우 다시 승인 요청
+            return self.request_query_approval(state)
+        
+        # 승인 키워드
+        approval_keywords = ["승인", "실행", "예", "ok", "yes", "y", "확인", "좋아", "좋아요"]
+        # 거부 키워드
+        rejection_keywords = ["거부", "취소", "아니오", "no", "n", "수정", "다시", "재생성"]
+        
+        is_approved = any(keyword in user_response for keyword in approval_keywords)
+        is_rejected = any(keyword in user_response for keyword in rejection_keywords)
+        
+        # 승인된 경우: 쿼리 실행을 위해 run_query로 진행
+        if is_approved:
+            if self.enable_logging:
+                logger.info("✅ [QUERY APPROVED] 사용자가 쿼리 승인")
+            
+            # tool_call 찾기: 우선순위
+            # 1. metadata에 저장된 pending_tool_call
+            # 2. 이전 메시지의 tool_calls
+            # 3. metadata의 pending_query로 새로 생성
+            tool_call_to_execute = None
+            pending_query = None
+            
+            # 1. metadata에서 pending_tool_call 확인 (가장 확실한 방법)
+            for msg in reversed(messages):
+                if isinstance(msg, AIMessage) and hasattr(msg, 'metadata') and msg.metadata:
+                    tool_call_to_execute = msg.metadata.get("pending_tool_call")
+                    if tool_call_to_execute:
+                        if self.enable_logging:
+                            logger.info("✅ [QUERY APPROVAL] metadata에서 tool_call 찾음")
+                        break
+                    pending_query = msg.metadata.get("pending_query")
+                    if pending_query and not tool_call_to_execute:
+                        break
+            
+            # 2. tool_call이 없으면 이전 메시지에서 찾기
+            if not tool_call_to_execute:
+                for msg in reversed(messages):
+                    if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                        for tool_call in msg.tool_calls:
+                            if tool_call.get('name') == 'sql_db_query':
+                                tool_call_to_execute = tool_call
+                                if self.enable_logging:
+                                    logger.info("✅ [QUERY APPROVAL] 이전 메시지에서 tool_call 찾음")
+                                break
+                        if tool_call_to_execute:
+                            break
+            
+            # 3. tool_call이 없고 pending_query가 있으면 새로 생성
+            if not tool_call_to_execute and pending_query:
+                tool_call_to_execute = {
+                    "name": "sql_db_query",
+                    "args": {"query": pending_query},
+                    "id": f"query_approval_{id(pending_query)}"
+                }
+                if self.enable_logging:
+                    logger.info("✅ [QUERY APPROVAL] pending_query로 tool_call 생성")
+            
+            if tool_call_to_execute:
+                # tool_call을 포함한 메시지 생성 (run_query에서 실행됨)
+                execution_message = AIMessage(
+                    content="",
+                    tool_calls=[tool_call_to_execute],
+                    metadata={"query_approved": True},
+                    id=messages[-1].id if messages else None
+                )
+                if self.enable_logging:
+                    logger.info(f"✅ [QUERY APPROVAL] 실행 메시지 생성: {tool_call_to_execute.get('args', {}).get('query', '')[:50]}...")
+                return {"messages": [execution_message]}
+            else:
+                # tool_call을 찾을 수 없는 경우 에러
+                if self.enable_logging:
+                    logger.error("❌ [QUERY APPROVAL] tool_call을 찾을 수 없습니다.")
+                error_response = AIMessage(
+                    content="쿼리를 찾을 수 없습니다. 다시 시도해주세요.",
+                    id=messages[-1].id if messages else None
+                )
+                return {"messages": [error_response]}
+        
+        # 거부된 경우: 수정 요청 또는 종료
+        elif is_rejected:
+            if self.enable_logging:
+                logger.info("❌ [QUERY REJECTED] 사용자가 쿼리 거부")
+            
+            rejection_response = AIMessage(
+                content="쿼리가 거부되었습니다. 다른 방식으로 질문해주시거나, 수정이 필요한 부분을 알려주시면 다시 쿼리를 생성하겠습니다.",
+                metadata={"query_rejected": True},
+                id=messages[-1].id if messages else None
+            )
+            return {"messages": [rejection_response]}
+        
+        # 명확하지 않은 응답: 다시 확인 요청
+        else:
+            if self.enable_logging:
+                logger.warning("⚠️  [UNCLEAR RESPONSE] 사용자 응답이 명확하지 않음")
+            
+            clarification_response = AIMessage(
+                content="응답을 명확히 이해하지 못했습니다. '승인' 또는 '거부'로 답변해주세요.",
+                metadata={"needs_user_response": True, "workflow_paused": True},
+                id=messages[-1].id if messages else None
+            )
+            return {"messages": [clarification_response]}
+    
     def format_query_results(self, state: MessagesState):
         """Format SQL query results into natural Korean language."""
         # 쿼리 결과 찾기

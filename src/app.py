@@ -67,6 +67,8 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
+    needs_user_response: bool = False  # HITL: 사용자 응답이 필요한지 여부
+    workflow_paused: bool = False  # 워크플로우가 일시 정지되었는지 여부
 
 
 # 시작 시 에이전트 초기화
@@ -113,6 +115,9 @@ async def chat(request: ChatRequest):
         result = agent.invoke(message, thread_id=DEFAULT_THREAD_ID)
         
         # 마지막 메시지에서 답변 추출
+        needs_user_response = False
+        workflow_paused = False
+        
         if result and 'messages' in result:
             last_message = result['messages'][-1]
             if hasattr(last_message, 'content') and last_message.content:
@@ -120,11 +125,20 @@ async def chat(request: ChatRequest):
             else:
                 logger.warning("Empty response from agent")
                 response_text = "답변을 생성할 수 없습니다. 다시 시도해주세요."
+            
+            # HITL: 메타데이터에서 사용자 응답 필요 여부 확인
+            if hasattr(last_message, 'metadata') and last_message.metadata:
+                needs_user_response = last_message.metadata.get("needs_user_response", False)
+                workflow_paused = last_message.metadata.get("workflow_paused", False)
         else:
             logger.warning("Invalid result structure from agent")
             response_text = "답변을 생성할 수 없습니다. 다시 시도해주세요."
         
-        return ChatResponse(response=response_text)
+        return ChatResponse(
+            response=response_text,
+            needs_user_response=needs_user_response,
+            workflow_paused=workflow_paused
+        )
         
     except HTTPException:
         raise

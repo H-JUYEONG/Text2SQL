@@ -44,3 +44,10 @@ QUERY_TIMEOUT_SECONDS = int(os.getenv("QUERY_TIMEOUT_SECONDS", "30"))  # 쿼리 
 ENABLE_QUERY_LOGGING = os.getenv("ENABLE_QUERY_LOGGING", "true").lower() == "true"  # 쿼리 로깅 활성화
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")  # 로깅 레벨
 
+# Checkpoint Configuration (for HITL)
+# 체크포인트 저장용 DB URI (기본값: 메인 DB와 동일 - 별도 DB 불필요)
+# 같은 DB를 사용해도 되고, 필요시 별도 DB URI를 설정할 수 있습니다.
+# LangGraph의 PostgresSaver가 자동으로 체크포인트 테이블을 생성합니다.
+CHECKPOINT_DB_URI = os.getenv("CHECKPOINT_DB_URI", DATABASE_URI)
+USE_DB_CHECKPOINTER = os.getenv("USE_DB_CHECKPOINTER", "false").lower() == "true"  # DB 기반 체크포인터 사용 여부
+

@@ -25,3 +25,7 @@ uvicorn[standard]>=0.30.0
 # 데이터베이스 드라이버
 psycopg2-binary>=2.9.0,<3.0.0
 
+# 체크포인터 (선택사항 - DB 기반 체크포인터 사용 시)
+# 최신 버전: 3.0.4 (psycopg 3.x 사용)
+langgraph-checkpoint-postgres>=1.0.0
+

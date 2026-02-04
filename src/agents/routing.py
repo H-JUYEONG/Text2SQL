@@ -26,16 +26,31 @@ class Routing:
         routing_prompt = get_routing_prompt()
         
         messages = state["messages"]
-        last_human_message = None
-        for msg in reversed(messages):
-            if isinstance(msg, HumanMessage):
-                last_human_message = msg
-                break
         
-        if not last_human_message:
-            question = messages[0].content if messages else ""
+        # 분할된 질문이 있는지 확인
+        split_questions = None
+        for msg in reversed(messages):
+            if isinstance(msg, AIMessage) and hasattr(msg, 'metadata') and msg.metadata:
+                if "split_questions" in msg.metadata:
+                    split_questions = msg.metadata["split_questions"]
+                    break
+        
+        # 분할된 질문이 있으면 첫 번째 질문 사용
+        if split_questions and len(split_questions) > 0:
+            question = split_questions[0]
+            logger.info(f"📋 [ROUTING] 분할된 질문 중 첫 번째 질문 사용: {question}")
         else:
-            question = last_human_message.content
+            # 일반적인 경우: 사용자 질문 추출
+            last_human_message = None
+            for msg in reversed(messages):
+                if isinstance(msg, HumanMessage):
+                    last_human_message = msg
+                    break
+            
+            if not last_human_message:
+                question = messages[0].content if messages else ""
+            else:
+                question = last_human_message.content
         
         # 라우팅 결정 전 로깅
         logger.info("=" * 80)
@@ -58,6 +73,38 @@ class Routing:
     def route_initial_query_condition(self, state: MessagesState) -> str:
         """Route condition function for conditional edge."""
         messages = state["messages"]
+        
+        # 쿼리 승인/거부 응답인지 먼저 확인 (HITL)
+        last_human_msg = None
+        for msg in reversed(messages):
+            if isinstance(msg, HumanMessage):
+                last_human_msg = msg
+                break
+        
+        if last_human_msg:
+            user_response = last_human_msg.content.lower().strip()
+            approval_keywords = ["승인", "실행", "예", "ok", "yes", "y", "확인", "좋아", "좋아요"]
+            rejection_keywords = ["거부", "취소", "아니오", "no", "n", "수정", "다시", "재생성"]
+            
+            # 승인/거부 키워드가 있고, 이전에 승인 요청이 있었는지 확인
+            is_approval_response = any(keyword in user_response for keyword in approval_keywords)
+            is_rejection_response = any(keyword in user_response for keyword in rejection_keywords)
+            
+            if is_approval_response or is_rejection_response:
+                # 이전 메시지 중 승인 요청이 있었는지 확인
+                for msg in reversed(messages):
+                    if isinstance(msg, AIMessage) and hasattr(msg, 'metadata') and msg.metadata:
+                        if msg.metadata.get("query_approval_pending", False):
+                            logger.info("=" * 80)
+                            logger.info("🔍 [ROUTING] 쿼리 승인/거부 응답 감지")
+                            logger.info(f"사용자 응답: {user_response}")
+                            logger.info(f"승인 요청 메시지 발견: {msg.content[:100] if hasattr(msg, 'content') else 'N/A'}...")
+                            logger.info("→ process_query_approval로 라우팅")
+                            logger.info("=" * 80)
+                            return "process_query_approval"
+                
+                # 승인 요청이 없는데 승인/거부 키워드가 있으면 로그
+                logger.warning(f"⚠️  [ROUTING] 승인/거부 키워드 감지되었으나 이전 승인 요청을 찾을 수 없음: {user_response}")
         
         # 사용자 질문 추출
         user_question = ""
