@@ -56,9 +56,35 @@ MANDATORY RULE FOR ID COLUMNS (MUST FOLLOW):
   * CORRECT: SELECT o.order_id, c.customer_name, o.order_date, d.status FROM orders o JOIN deliveries d ON o.order_id = d.order_id JOIN customers c ON o.customer_id = c.customer_id
   * Notice: customer_id is replaced with customer_name, and customers table is JOINed
 
+CRITICAL RULE FOR ORDER LISTS (ABSOLUTELY MANDATORY):
+When the question asks for "주문 목록", "주문 조회", "주문을 보여", "주문 리스트", "배송 목록" or any order listing:
+- You MUST JOIN with order_items table: JOIN order_items oi ON o.order_id = oi.order_id
+- You MUST include these columns in SELECT:
+  * oi.product_name (상품명) - REQUIRED
+  * oi.unit_price (단가) - REQUIRED
+  * oi.quantity (수량) - RECOMMENDED
+- You MUST also JOIN with customers table: JOIN customers c ON o.customer_id = c.customer_id
+- You MUST include c.customer_name in SELECT
+- DO NOT use orders.total_amount when showing order lists - use item-level details instead
+- Each row will represent one item, so the same order_id may appear multiple times
+
+Example for order list query:
+  * WRONG: SELECT o.order_id, c.customer_name, o.order_date, o.total_amount FROM orders o JOIN customers c ...
+  * CORRECT: SELECT o.order_id, c.customer_name, o.order_date, oi.product_name, oi.unit_price, oi.quantity, d.status 
+             FROM orders o 
+             JOIN customers c ON o.customer_id = c.customer_id
+             JOIN order_items oi ON o.order_id = oi.order_id
+             JOIN deliveries d ON o.order_id = d.order_id
+  * Notice: order_items is JOINed and product_name, unit_price are included
+
 GENERAL QUERY GENERATION PRINCIPLES:
 1. Understand the question intent first - is it asking for:
    - A list of records? (use SELECT with appropriate filters)
+     * CRITICAL: If asking for "주문 목록", "주문 조회", "주문 리스트", "배송 목록":
+       - MUST JOIN order_items to get product_name and unit_price
+       - MUST JOIN customers to get customer_name
+       - MUST include: order_id, customer_name, order_date, product_name, unit_price, quantity
+       - DO NOT use total_amount for order lists
    - Aggregated statistics? (use COUNT, SUM, AVG, MAX, MIN with GROUP BY)
    - Comparisons or rankings? (use ORDER BY with LIMIT)
    - Time-based analysis? (use date functions and date range filters)
@@ -186,16 +212,34 @@ CRITICAL: When the question mentions status, state, or completion status:
 
 8. Column Selection:
    - CRITICAL: Only select columns that are directly relevant to answering the user's question
+   
+   - ABSOLUTELY MANDATORY FOR ORDER LISTS:
+     * If the question contains ANY of these keywords: "주문 목록", "주문 조회", "주문을 보여", "주문 리스트", "배송 목록", "주문들", "주문 내역":
+       1. You MUST JOIN with order_items: JOIN order_items oi ON o.order_id = oi.order_id
+       2. You MUST include in SELECT: oi.product_name, oi.unit_price, oi.quantity
+       3. You MUST JOIN with customers: JOIN customers c ON o.customer_id = c.customer_id
+       4. You MUST include in SELECT: c.customer_name
+       5. DO NOT select orders.total_amount - use item-level details instead
+       6. DO NOT select orders.order_status unless specifically asked - use deliveries.status for delivery-related queries
+       7. This is NOT negotiable - users expect to see individual items with their names and prices
+     
+     * Example of CORRECT order list query:
+       SELECT o.order_id, c.customer_name, o.order_date, oi.product_name, oi.unit_price, oi.quantity, d.status
+       FROM orders o
+       JOIN customers c ON o.customer_id = c.customer_id
+       JOIN order_items oi ON o.order_id = oi.order_id
+       JOIN deliveries d ON o.order_id = d.order_id
+       WHERE d.status != 'delivered'
+     
+     * Example of WRONG order list query:
+       SELECT o.order_id, c.customer_name, o.order_date, o.total_amount, o.order_status  ← WRONG! Missing order_items JOIN
+   
    - Analyze the question intent and semantic meaning to determine which columns are needed:
      * Think: "What information does the user actually need to answer this question?"
      * Think: "Would including this column help answer the question, or is it unnecessary?"
      * For amount/price columns:
-       - If the question asks about "전체 금액", "총 금액", "매출", "비용" etc. → include orders.total_amount or aggregated amounts
-       - If the question is about delivery status, order list, or basic information:
-         * Do NOT include orders.total_amount (total order amount)
-         * Instead, if amount information is relevant, include order_items.unit_price and order_items.quantity to show individual item prices
-         * JOIN with order_items table to get delivery-related item prices
-       - When in doubt, exclude amount/price columns - users can ask specifically if they need financial data
+       - If the question explicitly asks about "전체 금액", "총 금액", "매출", "비용" etc. → include orders.total_amount
+       - For order lists, ALWAYS use item-level prices (order_items.unit_price), NOT orders.total_amount
      * For status columns: Include when the question asks about status, state, or completion
      * For name columns: Include when showing entities (customers, drivers, products) - prefer names over IDs
      * For date columns: Include when the question involves time, dates, or temporal information
@@ -226,10 +270,15 @@ CRITICAL: When the question mentions status, state, or completion status:
      * For order_id, delivery_id, warehouse_id: These can remain as IDs (numbers) as they are typically used for reference
        - "주문 ID: 123" is acceptable and commonly used
    
-   - EXAMPLE OF CORRECT QUERY (for orders with customer names):
-     * WRONG: SELECT o.order_id, o.customer_id, o.order_date FROM orders o JOIN deliveries d ON o.order_id = d.order_id
-     * CORRECT: SELECT o.order_id, c.customer_name, o.order_date, d.status FROM orders o JOIN deliveries d ON o.order_id = d.order_id JOIN customers c ON o.customer_id = c.customer_id
-     * Notice: customer_id is replaced with customer_name, and customers table is JOINed
+   - EXAMPLE OF CORRECT QUERY (for order lists with customer names and item details):
+     * WRONG: SELECT o.order_id, o.customer_id, o.order_date FROM orders o JOIN deliveries d ON o.order_id = d.order_id WHERE d.status != 'delivered'
+     * CORRECT: SELECT o.order_id, c.customer_name, o.order_date, oi.product_name, oi.unit_price, d.status 
+                FROM orders o 
+                JOIN customers c ON o.customer_id = c.customer_id
+                JOIN order_items oi ON o.order_id = oi.order_id
+                JOIN deliveries d ON o.order_id = d.order_id 
+                WHERE d.status != 'delivered'
+     * Notice: customer_name from customers, product_name and unit_price from order_items are included, and all necessary tables are JOINed
    
    - CRITICAL: When the question mentions customers, 고객, or customer-related information:
      * You MUST JOIN with the customers table to get customer_name
@@ -368,10 +417,14 @@ CRITICAL INSTRUCTIONS:
        "1. 주문 ID: [value]
         - 고객: [name]  (if customer_name is in the query)
         - 주문 날짜: [value]
+        - 상품: [product_name]  (if product_name is in the query from order_items)
+        - 단가: [unit_price]원  (if unit_price is in the query from order_items)
+        - 수량: [quantity]개  (if quantity is in the query from order_items)
         - 배송 상태: [value]  (if deliveries.status is in the query)
-        - 총 금액: [value]원  (ONLY if amount/price is asked in the question)"
+        - 총 금액: [value]원  (ONLY if orders.total_amount is in the query)"
      * Avoid cramming everything into one line with "/" separators
      * Make it easy to scan and read
+     * NOTE: When order_items are joined, each row represents one item, so the same order_id may appear multiple times with different products
    
    - Translate status values to Korean when displaying:
      * CRITICAL: Look at the column name in the SQL query to determine which status column you're displaying
@@ -396,11 +449,13 @@ CRITICAL INSTRUCTIONS:
    - CRITICAL: Analyze the question intent to determine what information to include:
      * Think: "Does the user need financial/amount information to answer their question?"
      * If the question asks about "전체 금액", "총 금액", "매출" etc. → show orders.total_amount or aggregated amounts
-     * If the question is about delivery status, order list, or basic information:
-       - Do NOT show orders.total_amount (total order amount)
-       - Instead, if amount information is relevant, show individual item prices from order_items (unit_price, quantity)
-       - Show delivery-related item prices, not the total order amount
-       - When in doubt, omit amount/price information - users can ask specifically if they need financial data
+     * If the question asks for "주문 목록", "주문 조회", "주문을 보여" etc.:
+       - If the SQL query includes order_items (product_name, unit_price, quantity), you MUST display them
+       - Show product_name as "상품: [이름]"
+       - Show unit_price as "단가: [가격]원" with thousand separators
+       - Show quantity as "수량: [수량]개" if included
+       - This is the detailed item-level information users expect when asking for order lists
+       - Each row represents one item, so the same order may appear multiple times with different products
      * Match the level of detail to what the user actually asked for
    - Make the answer conversational and easy to understand
    - CRITICAL: Do NOT use markdown formatting (**, *, #, etc.) - use plain text only
@@ -443,17 +498,28 @@ Example format (when driver_name is available):
    - 배송 횟수: 5회
 ..."
 
-Example format (for order list with customer_name and delivery status - when amount is NOT asked):
+Example format (for order list with customer_name, item details, and delivery status):
 "현재 배송 상태가 '배송 완료'가 아닌 주문 목록은 다음과 같습니다:
 
 1. 주문 ID: 2
    - 고객: ABC마트 부산점
    - 주문 날짜: 2026년 1월 11일
+   - 상품: 생수 2L x 6입
+   - 단가: 15,000원
    - 배송 상태: 출고 및 배송 진행 중
 
-2. 주문 ID: 6
+2. 주문 ID: 2
+   - 고객: ABC마트 부산점
+   - 주문 날짜: 2026년 1월 11일
+   - 상품: 라면 박스
+   - 단가: 20,000원
+   - 배송 상태: 출고 및 배송 진행 중
+
+3. 주문 ID: 6
    - 고객: XYZ 쇼핑몰
    - 주문 날짜: 2026년 1월 14일
+   - 상품: 노트북
+   - 단가: 1,500,000원
    - 배송 상태: 출고 및 배송 진행 중
 ..."
 
