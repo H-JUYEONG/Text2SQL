@@ -74,34 +74,19 @@ Text2SQL/
   - `Dockerfile`로 앱 이미지 빌드 → `docker-compose.yml`로 서비스 실행
 - **GitHub Actions** - CI/CD 파이프라인 (자동 빌드 및 배포)
 
-## 🔄 CI/CD
+## ⚙️ 환경 설정
 
-### GitHub Actions
+프로젝트 루트에 `.env` 파일을 생성하여 환경 변수 설정
 
-자동 빌드 및 배포를 위한 GitHub Actions 워크플로우가 설정되어 있습니다:
-
-- **트리거**: `main` 또는 `master` 브랜치에 push 시 자동 실행
-- **작업**:
-  1. 코드 체크아웃
-  2. Secrets 검증 (EC2 접속 정보)
-  3. EC2 서버에 SSH 연결
-  4. 코드 pull 및 Docker 이미지 빌드
-  5. docker-compose로 서비스 재시작
-  6. 헬스 체크
-
-### 워크플로우 파일
-
-`.github/workflows/deploy-ec2.yml` 파일에서 CI/CD 설정을 관리합니다.
-
-### 필요한 GitHub Secrets
-
-EC2 배포를 위해 다음 Secrets를 설정해야 합니다:
-
-- `EC2_HOST`: EC2 인스턴스 IP 주소 또는 도메인
-- `EC2_USERNAME`: EC2 사용자명 (예: `ubuntu`, `ec2-user`)
-- `EC2_SSH_KEY`: EC2 SSH 개인 키 (전체 내용)
-
-**설정 방법**: GitHub 저장소 → Settings → Secrets and variables → Actions → New repository secret
+```bash
+# .env 파일 생성
+cat > .env << EOF
+OPENAI_API_KEY="your_openai_api_key_here"
+DATABASE_URI="postgresql+psycopg2://text2sql:text2sql@postgres:5432/logistics"
+CHECKPOINT_DB_URI="postgresql+psycopg2://text2sql:text2sql@postgres:5432/logistics"
+USE_DB_CHECKPOINTER="true"
+EOF
+```
 
 ## 📝 사용 예시
 
