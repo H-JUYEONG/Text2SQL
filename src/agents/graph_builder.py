@@ -61,6 +61,17 @@ class GraphBuilder:
         
         workflow.add_node("direct_response", direct_response)
         
+        # Reject Response (for security violations)
+        def reject_response(state: MessagesState):
+            """Reject data modification requests."""
+            from langchain_core.messages import AIMessage
+            rejection_message = AIMessage(
+                content="죄송합니다. 데이터 수정, 삭제, 생성 등의 작업은 보안상의 이유로 허용되지 않습니다. 읽기 전용 조회만 가능합니다."
+            )
+            return {"messages": [rejection_message]}
+        
+        workflow.add_node("reject_response", reject_response)
+        
         # Edges
         workflow.add_edge(START, "route_initial_query")
         
@@ -72,6 +83,7 @@ class GraphBuilder:
                 "sql_workflow": "list_tables",
                 "rag_workflow": "generate_query_or_respond",
                 "direct_response": "direct_response",
+                "reject_workflow": "reject_response",
             },
         )
         
@@ -178,6 +190,7 @@ class GraphBuilder:
         
         workflow.add_edge("generate_answer", END)
         workflow.add_edge("direct_response", END)
+        workflow.add_edge("reject_response", END)
         
         # Compile with checkpointer for thread-scoped memory
         return workflow.compile(checkpointer=self.agent.checkpointer)
