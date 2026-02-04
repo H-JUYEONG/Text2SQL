@@ -22,6 +22,29 @@ class RAGNodes:
     
     def generate_query_or_respond(self, state: MessagesState):
         """Call the model to generate a response or retrieve - following Custom RAG Agent pattern."""
+        # Security check: Reject document modification requests
+        messages = state["messages"]
+        user_question = ""
+        for msg in reversed(messages):
+            if isinstance(msg, HumanMessage):
+                user_question = msg.content.lower()
+                break
+        
+        # Check for document modification keywords
+        modification_keywords = [
+            '문서 생성', '문서 수정', '문서 삭제', '문서 작성', '문서 편집', '문서 변경',
+            'pdf 생성', 'pdf 수정', 'pdf 삭제', 'pdf 작성', 'pdf 편집',
+            'create document', 'modify document', 'delete document', 'write document', 'edit document',
+            '업데이트', '수정', '삭제', '생성', '작성', '편집', '변경'
+        ]
+        
+        if any(keyword in user_question for keyword in modification_keywords):
+            from langchain_core.messages import AIMessage
+            rejection_message = AIMessage(
+                content="죄송합니다. 문서 생성, 수정, 삭제 등의 작업은 보안상의 이유로 허용되지 않습니다. 문서 조회만 가능합니다."
+            )
+            return {"messages": [rejection_message]}
+        
         if not self.retriever_tool:
             korean_prompt = get_korean_prompt()
             messages_with_prompt = [korean_prompt] + state["messages"]
