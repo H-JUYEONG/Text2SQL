@@ -27,10 +27,22 @@ docker-compose build --no-cache app
 echo "▶️ Starting containers..."
 docker-compose up -d
 
-# 헬스 체크
-echo "🏥 Health check..."
-sleep 5
-curl -f http://localhost:8000/api/health || exit 1
+# 헬스 체크 (재시도 로직 포함)
+echo "🏥 Waiting for application to be ready..."
+max_attempts=30
+attempt=0
+while [ $attempt -lt $max_attempts ]; do
+  if curl -f http://localhost:8000/api/health 2>/dev/null; then
+    echo "✅ Application is healthy!"
+    exit 0
+  fi
+  attempt=$((attempt + 1))
+  echo "Attempt $attempt/$max_attempts failed, retrying in 5 seconds..."
+  sleep 5
+done
+echo "❌ Health check failed after $max_attempts attempts"
+docker-compose logs app
+exit 1
 
 echo "✅ Deployment completed successfully!"
 
