@@ -122,5 +122,5 @@ EOF
 - [LangGraph Custom RAG agent](https://docs.langchain.com/oss/python/langgraph/agentic-rag/)
 - [LangGraph Custom SQL agent](https://docs.langchain.com/oss/python/langgraph/sql-agent/)
 - [Document loaders](https://docs.langchain.com/oss/python/integrations/document_loaders/)
-- [Vector stores](https://docs.langchain.com/oss/python/integrations/vectorstores#in-memory/)
+- [Vector stores => in-memory](https://docs.langchain.com/oss/python/integrations/vectorstores#in-memory/)
 - [Memory](https://docs.langchain.com/oss/python/langgraph/add-memory#use-in-production/)
