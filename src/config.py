@@ -24,7 +24,7 @@ LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "8000"))  # LLM 응답 최대 �
 EMBEDDINGS_MODEL = os.getenv("EMBEDDINGS_MODEL", "text-embedding-3-large")
 
 # Database Configuration
-DATABASE_URI = os.getenv("DATABASE_URI", "sqlite:///data/logistics.db")
+DATABASE_URI = os.getenv("DATABASE_URI", "postgresql://user:password@localhost:5432/dbname")
 
 # RAG Configuration
 VECTOR_STORE_TYPE = os.getenv("VECTOR_STORE_TYPE", "in_memory")  # in_memory, chroma, etc.

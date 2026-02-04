@@ -34,10 +34,8 @@ def validate_query_security(query: str) -> Tuple[bool, str]:
     if not query_upper.startswith('SELECT'):
         return False, "SELECT 쿼리만 실행할 수 있습니다."
     
-    # 시스템 테이블/메타데이터 접근 차단 (SQLite, PostgreSQL 공통)
+    # 시스템 테이블/메타데이터 접근 차단 (PostgreSQL)
     system_tables = [
-        # SQLite
-        'SQLITE_MASTER', 'SQLITE_TEMP_MASTER', 'SQLITE_SEQUENCE',
         # PostgreSQL
         'PG_CATALOG', 'INFORMATION_SCHEMA'
     ]
@@ -130,40 +128,7 @@ def get_database_schema(db) -> Dict[str, Set[str]]:
                 except Exception as e:
                     logger.debug(f"Failed to get schema for table {table_name}: {e}")
         
-        # 방법 2: SQLite의 경우 직접 PRAGMA 사용
-        elif hasattr(db, 'dialect') and db.dialect == 'sqlite' and hasattr(db, 'run'):
-            try:
-                # 테이블 목록 가져오기
-                tables_result = db.run("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
-                
-                # 결과 파싱
-                import ast
-                if isinstance(tables_result, str):
-                    # 튜플 리스트 형태의 문자열인 경우
-                    try:
-                        tables = ast.literal_eval(tables_result)
-                        for table_tuple in tables:
-                            if isinstance(table_tuple, tuple) and len(table_tuple) > 0:
-                                table_name = table_tuple[0].lower()
-                                schema[table_name] = set()
-                                
-                                # 각 테이블의 컬럼 정보 가져오기
-                                try:
-                                    pragma_result = db.run(f"PRAGMA table_info({table_tuple[0]})")
-                                    if isinstance(pragma_result, str):
-                                        pragma_data = ast.literal_eval(pragma_result)
-                                        for col_info in pragma_data:
-                                            if isinstance(col_info, tuple) and len(col_info) > 1:
-                                                schema[table_name].add(col_info[1].lower())
-                                except:
-                                    pass
-                    except:
-                        # 문자열이 아닌 경우 직접 처리
-                        pass
-            except Exception as e:
-                logger.debug(f"Failed to get schema via PRAGMA: {e}")
-        
-        # 방법 3: get_table_info_no_throw()로 전체 스키마 가져오기
+        # 방법 2: get_table_info_no_throw()로 전체 스키마 가져오기
         if not schema and hasattr(db, 'get_table_info_no_throw'):
             try:
                 tables_info = db.get_table_info_no_throw()
