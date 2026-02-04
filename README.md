@@ -118,8 +118,6 @@ EOF
 
 ## 📚 참고 자료
 
-- [LangChain RAG agent](https://docs.langchain.com/oss/python/langchain/rag/)
-- [LangChain SQL agent](https://docs.langchain.com/oss/python/langchain/sql-agent/)
 - [LangGraph Custom RAG agent](https://docs.langchain.com/oss/python/langgraph/agentic-rag/)
 - [LangGraph Custom SQL agent](https://docs.langchain.com/oss/python/langgraph/sql-agent/)
 - [Document loaders](https://docs.langchain.com/oss/python/integrations/document_loaders/)
