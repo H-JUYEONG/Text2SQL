@@ -62,7 +62,6 @@ Text2SQL/
 - **LangGraph 1.0+** - AI 에이전트 워크플로우 오케스트레이션
 - **LangChain 1.2+** - LLM 통합 및 SQL/RAG 에이전트
 - **PostgreSQL** - 대상 데이터베이스
-- **psycopg[binary]** - PostgreSQL 드라이버
 - **langgraph-checkpoint-postgres** - HITL 상태 저장 (사용자 응답 대기 중 워크플로우 상태 유지)
 
 ### Infrastructure
@@ -123,4 +122,5 @@ EOF
 - [LangGraph Custom RAG agent](https://docs.langchain.com/oss/python/langgraph/agentic-rag/)
 - [LangGraph Custom SQL agent](https://docs.langchain.com/oss/python/langgraph/sql-agent/)
 - [Document loaders](https://docs.langchain.com/oss/python/integrations/document_loaders/)
-- [Vector stores](https://docs.langchain.com/oss/python/integrations/vectorstores#in-memory/)  
+- [Vector stores](https://docs.langchain.com/oss/python/integrations/vectorstores#in-memory/)
+- [Memory](https://docs.langchain.com/oss/python/langgraph/add-memory#use-in-production/)
