@@ -62,7 +62,8 @@ Text2SQL/
 - **LangGraph 1.0+** - AI 에이전트 워크플로우 오케스트레이션
 - **LangChain 1.2+** - LLM 통합 및 SQL/RAG 에이전트
 - **PostgreSQL** - 대상 데이터베이스
-- **langgraph-checkpoint-postgres** - HITL 상태 저장 (사용자 응답 대기 중 워크플로우 상태 유지)
+- **InMemoryVectorStore** - RAG 문서 검색용 벡터 스토어 (메모리 기반)
+- **langgraph-checkpoint-postgres** - HITL 상태 저장 (사용자 응답 대기 중 워크플로우 상태 유지, PostgreSQL 기반)
 
 ### Infrastructure
 - **Docker** - 컨테이너화 (이미지 빌드 및 실행)
@@ -122,5 +123,5 @@ EOF
 - [LangGraph Custom RAG agent](https://docs.langchain.com/oss/python/langgraph/agentic-rag/)
 - [LangGraph Custom SQL agent](https://docs.langchain.com/oss/python/langgraph/sql-agent/)
 - [Document loaders](https://docs.langchain.com/oss/python/integrations/document_loaders/)
-- [Vector stores => in-memory](https://docs.langchain.com/oss/python/integrations/vectorstores#in-memory/)
+- [Vector stores](https://docs.langchain.com/oss/python/integrations/vectorstores#in-memory/)
 - [Memory](https://docs.langchain.com/oss/python/langgraph/add-memory#use-in-production/)
