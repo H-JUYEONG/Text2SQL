@@ -26,8 +26,10 @@ services:
       - "8000:8000"
     volumes:
       - ./data:/app/data
-      # .env 파일은 마운트하지 않음 (환경 변수 우선 사용)
-      # 필요시 .env.docker 파일을 별도로 생성하여 사용 가능
+    # .env 파일에서 환경 변수 자동 로드 (선택사항 - 파일이 없어도 기본값 사용)
+    # 상대 경로: 프로젝트 루트의 .env 파일 사용 (로컬/EC2 모두 동일하게 작동)
+    env_file:
+      - .env
     environment:
       - PYTHONUNBUFFERED=1
       # Docker Compose 환경에서는 postgres 서비스 이름을 호스트로 사용
