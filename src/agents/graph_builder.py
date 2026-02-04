@@ -58,6 +58,7 @@ class GraphBuilder:
         
         # Routing Node
         workflow.add_node("route_initial_query", self.routing.route_initial_query_node)
+        workflow.add_node("request_routing_clarification", self.routing.request_routing_clarification)
         
         # Direct Response
         def direct_response(state: MessagesState):
@@ -115,6 +116,21 @@ class GraphBuilder:
                 "direct_response": "direct_response",
                 "reject_workflow": "reject_response",
                 "process_query_approval": "process_query_approval",  # HITL: 쿼리 승인 응답 처리
+                "request_routing_clarification": "request_routing_clarification",  # HITL: 라우팅 클리어리피케이션 요청
+            },
+        )
+        
+        # 라우팅 클리어리피케이션 후 다시 라우팅
+        workflow.add_conditional_edges(
+            "request_routing_clarification",
+            self.routing.route_initial_query_condition,
+            {
+                "sql_workflow": "list_tables",
+                "rag_workflow": "generate_query_or_respond",
+                "direct_response": "direct_response",
+                "reject_workflow": "reject_response",
+                "request_routing_clarification": "request_routing_clarification",  # 응답이 명확하지 않으면 다시 요청
+                END: END,  # 사용자 응답 대기
             },
         )
         
