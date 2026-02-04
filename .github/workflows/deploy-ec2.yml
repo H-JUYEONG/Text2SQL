@@ -52,14 +52,18 @@ jobs:
           cd ~/Text2SQL
           git pull origin main || git pull origin master
           
-          # 기존 컨테이너 중지 및 제거, 이미지도 제거
-          docker-compose down --rmi all || true
+          # 기존 앱 컨테이너만 중지 및 제거 (PostgreSQL 데이터는 유지)
+          docker-compose stop app || true
+          docker-compose rm -f app || true
           
-          # 사용하지 않는 이미지 정리 (선택사항, 디스크 공간 절약)
+          # 앱 이미지만 제거 (PostgreSQL 이미지는 유지)
+          docker images | grep -E "text2sql.*app|text2sql-app" | awk '{print $3}' | xargs -r docker rmi -f || true
+          
+          # 사용하지 않는 이미지 정리 (디스크 공간 절약, PostgreSQL 제외)
           docker image prune -f
           
-          # 새로 빌드 및 실행
-          docker-compose build --no-cache
+          # 새로 빌드 (앱만) 및 실행
+          docker-compose build --no-cache app
           docker-compose up -d
           
           # 헬스 체크

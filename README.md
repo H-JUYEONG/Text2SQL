@@ -54,6 +54,10 @@ Text2SQL/
 
 ## 🔧 기술 스택
 
+### Frontend
+- **HTML/CSS/JavaScript** - 웹 인터페이스
+- **Vanilla JS** - 프레임워크 없는 순수 JavaScript
+
 ### Backend
 - **Python 3.11+** - 프로그래밍 언어
 - **FastAPI** - 비동기 웹 프레임워크
@@ -63,32 +67,41 @@ Text2SQL/
 - **psycopg[binary]** - PostgreSQL 드라이버
 - **langgraph-checkpoint-postgres** - HITL 상태 저장 (사용자 응답 대기 중 워크플로우 상태 유지)
 
-### Frontend
-- **HTML/CSS/JavaScript** - 웹 인터페이스
-- **Vanilla JS** - 프레임워크 없는 순수 JavaScript
-
 ### Infrastructure
-- **Docker** - 컨테이너화
-- **docker-compose** - 멀티 컨테이너 오케스트레이션
+- **Docker** - 컨테이너화 (이미지 빌드 및 실행)
+- **docker-compose** - 멀티 컨테이너 오케스트레이션 (앱 + PostgreSQL 함께 실행)
+  - 현재 배포 방식: `docker-compose` 사용 (내부적으로 Docker 사용)
+  - `Dockerfile`로 앱 이미지 빌드 → `docker-compose.yml`로 서비스 실행
+- **GitHub Actions** - CI/CD 파이프라인 (자동 빌드 및 배포)
 
-## ⚙️ 설정
+## 🔄 CI/CD
 
-### 환경 변수 (.env)
+### GitHub Actions
 
-```bash
-# LLM
-LLM_MODEL=gpt-4o-mini
-LLM_MAX_TOKENS=8000
+자동 빌드 및 배포를 위한 GitHub Actions 워크플로우가 설정되어 있습니다:
 
-# 데이터베이스
-DATABASE_URI=postgresql+psycopg2://user:password@localhost:5432/dbname
+- **트리거**: `main` 또는 `master` 브랜치에 push 시 자동 실행
+- **작업**:
+  1. 코드 체크아웃
+  2. Secrets 검증 (EC2 접속 정보)
+  3. EC2 서버에 SSH 연결
+  4. 코드 pull 및 Docker 이미지 빌드
+  5. docker-compose로 서비스 재시작
+  6. 헬스 체크
 
-# 체크포인트 (HITL용 - 사용자 응답 대기 중 상태 저장)
-USE_DB_CHECKPOINTER=true  # false면 메모리 기반 (재시작 시 초기화)
+### 워크플로우 파일
 
-# API Keys
-OPENAI_API_KEY=your_key
-```
+`.github/workflows/deploy-ec2.yml` 파일에서 CI/CD 설정을 관리합니다.
+
+### 필요한 GitHub Secrets
+
+EC2 배포를 위해 다음 Secrets를 설정해야 합니다:
+
+- `EC2_HOST`: EC2 인스턴스 IP 주소 또는 도메인
+- `EC2_USERNAME`: EC2 사용자명 (예: `ubuntu`, `ec2-user`)
+- `EC2_SSH_KEY`: EC2 SSH 개인 키 (전체 내용)
+
+**설정 방법**: GitHub 저장소 → Settings → Secrets and variables → Actions → New repository secret
 
 ## 📝 사용 예시
 

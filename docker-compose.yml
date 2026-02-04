@@ -1,6 +1,24 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: text2sql-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-text2sql}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-text2sql}
+      POSTGRES_DB: ${POSTGRES_DB:-logistics}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data  # 데이터 영속화 (재배포 시에도 유지)
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-text2sql}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   app:
     build: .
     container_name: text2sql-app
@@ -11,6 +29,9 @@ services:
       - ./.env:/app/.env
     environment:
       - PYTHONUNBUFFERED=1
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
@@ -18,4 +39,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+volumes:
+  postgres_data:
 
