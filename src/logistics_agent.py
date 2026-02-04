@@ -61,6 +61,8 @@ class LogisticsAgent:
         
         # Enterprise settings
         self.max_query_results = MAX_QUERY_RESULTS
+        self.small_result_threshold = int(os.getenv("SMALL_RESULT_THRESHOLD", "50"))
+        self.limit_for_large_results = int(os.getenv("LIMIT_FOR_LARGE_RESULTS", "50"))
         self.query_timeout = QUERY_TIMEOUT_SECONDS
         self.enable_logging = ENABLE_QUERY_LOGGING
         

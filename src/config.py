@@ -32,6 +32,8 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 
 # Enterprise Configuration
 MAX_QUERY_RESULTS = int(os.getenv("MAX_QUERY_RESULTS", "100"))  # 최대 결과 수 제한
+SMALL_RESULT_THRESHOLD = int(os.getenv("SMALL_RESULT_THRESHOLD", "50"))  # 이 개수 이하면 LIMIT 없이 전체 조회
+LIMIT_FOR_LARGE_RESULTS = int(os.getenv("LIMIT_FOR_LARGE_RESULTS", "50"))  # 건수가 많을 때 적용할 LIMIT
 QUERY_TIMEOUT_SECONDS = int(os.getenv("QUERY_TIMEOUT_SECONDS", "30"))  # 쿼리 타임아웃
 ENABLE_QUERY_LOGGING = os.getenv("ENABLE_QUERY_LOGGING", "true").lower() == "true"  # 쿼리 로깅 활성화
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")  # 로깅 레벨

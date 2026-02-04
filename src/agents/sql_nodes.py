@@ -28,6 +28,8 @@ class SQLNodes:
         self.get_schema_tool = agent.get_schema_tool
         self.run_query_tool = agent.run_query_tool
         self.max_query_results = agent.max_query_results
+        self.small_result_threshold = agent.small_result_threshold
+        self.limit_for_large_results = agent.limit_for_large_results
         self.enable_logging = agent.enable_logging
     
     def list_tables(self, state: MessagesState):
