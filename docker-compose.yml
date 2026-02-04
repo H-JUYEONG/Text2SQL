@@ -33,6 +33,8 @@ services:
       # Docker Compose 환경에서는 postgres 서비스 이름을 호스트로 사용
       # .env 파일의 DATABASE_URI가 있으면 그것을 사용, 없으면 기본값 사용
       - DATABASE_URI=${DATABASE_URI:-postgresql+psycopg2://text2sql:text2sql@postgres:5432/logistics}
+      # 체크포인터용 DB URI (기본값: 메인 DB와 동일)
+      - CHECKPOINT_DB_URI=${CHECKPOINT_DB_URI:-postgresql+psycopg2://text2sql:text2sql@postgres:5432/logistics}
       # 다른 환경 변수들도 필요시 여기에 추가
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
       - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-8000}
