@@ -91,20 +91,33 @@ class Routing:
             is_rejection_response = any(keyword in user_response for keyword in rejection_keywords)
             
             if is_approval_response or is_rejection_response:
-                # 이전 메시지 중 승인 요청이 있었는지 확인
-                for msg in reversed(messages):
-                    if isinstance(msg, AIMessage) and hasattr(msg, 'metadata') and msg.metadata:
-                        if msg.metadata.get("query_approval_pending", False):
+                # 마지막 HumanMessage 바로 이전에 승인 요청이 있어야 함 (새 질문과 구분)
+                # 즉, 마지막 메시지가 승인 요청이고, 그 다음이 사용자 응답이어야 함
+                if len(messages) >= 2:
+                    prev_msg = messages[-2]  # 마지막 HumanMessage 바로 이전 메시지
+                    if isinstance(prev_msg, AIMessage) and hasattr(prev_msg, 'metadata') and prev_msg.metadata:
+                        if prev_msg.metadata.get("query_approval_pending", False):
                             logger.info("=" * 80)
                             logger.info("🔍 [ROUTING] 쿼리 승인/거부 응답 감지")
                             logger.info(f"사용자 응답: {user_response}")
-                            logger.info(f"승인 요청 메시지 발견: {msg.content[:100] if hasattr(msg, 'content') else 'N/A'}...")
+                            logger.info(f"승인 요청 메시지 발견: {prev_msg.content[:100] if hasattr(prev_msg, 'content') else 'N/A'}...")
                             logger.info("→ process_query_approval로 라우팅")
                             logger.info("=" * 80)
                             return "process_query_approval"
                 
-                # 승인 요청이 없는데 승인/거부 키워드가 있으면 로그
-                logger.warning(f"⚠️  [ROUTING] 승인/거부 키워드 감지되었으나 이전 승인 요청을 찾을 수 없음: {user_response}")
+                # 이전 메시지 전체에서 승인 요청 찾기 (fallback)
+                for msg in reversed(messages[:-1]):  # 마지막 HumanMessage 제외
+                    if isinstance(msg, AIMessage) and hasattr(msg, 'metadata') and msg.metadata:
+                        if msg.metadata.get("query_approval_pending", False):
+                            logger.info("=" * 80)
+                            logger.info("🔍 [ROUTING] 쿼리 승인/거부 응답 감지 (fallback)")
+                            logger.info(f"사용자 응답: {user_response}")
+                            logger.info("→ process_query_approval로 라우팅")
+                            logger.info("=" * 80)
+                            return "process_query_approval"
+                
+                # 승인 요청이 없는데 승인/거부 키워드가 있으면 새 질문으로 처리
+                logger.info(f"ℹ️  [ROUTING] 승인/거부 키워드가 있으나 이전 승인 요청이 없음 - 새 질문으로 처리: {user_response}")
         
         # 사용자 질문 추출
         user_question = ""

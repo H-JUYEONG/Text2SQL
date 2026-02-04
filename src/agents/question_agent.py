@@ -123,40 +123,110 @@ class QuestionAgent:
         
         # 명확화 질문이 있고, 사용자 응답이 있으면 원래 질문과 결합하여 다음 단계로
         if clarification_asked and clarification_msg_index >= 0:
-            # 명확화 질문 이후의 HumanMessage가 있는지 확인
-            later_human_messages = [msg for i, msg in enumerate(messages) if isinstance(msg, HumanMessage) and i > clarification_msg_index]
+            # 가장 최근 HumanMessage 찾기 (새 질문일 가능성이 높음)
+            last_human_message = None
+            last_human_index = -1
+            for i in range(len(messages) - 1, -1, -1):
+                if isinstance(messages[i], HumanMessage):
+                    last_human_message = messages[i]
+                    last_human_index = i
+                    break
             
-            if later_human_messages:
-                # 사용자 응답이 있음 - 원래 질문과 결합하여 완전한 질문 생성
-                original_question = ""
-                for msg in messages[:clarification_msg_index]:
-                    if isinstance(msg, HumanMessage):
-                        original_question = msg.content
+            if not last_human_message or last_human_index <= clarification_msg_index:
+                # 명확화 질문 이후에 HumanMessage가 없으면 명확화 질문 생성
+                pass
+            else:
+                # 가장 최근 HumanMessage가 명확화 질문 이후에 있음
+                clarification_response = last_human_message.content
+                
+                # 명확화 질문 이후에 쿼리 실행이나 결과가 있는지 확인
+                # (이전 질문이 이미 완료되었는지 확인)
+                has_completed_workflow = False
+                for i in range(clarification_msg_index + 1, last_human_index):
+                    msg = messages[i]
+                    # 쿼리 결과, 포맷팅된 응답, 또는 승인 요청이 있으면 이전 워크플로우가 완료된 것
+                    if hasattr(msg, 'name') and msg.name == 'sql_db_query':
+                        has_completed_workflow = True
                         break
+                    elif isinstance(msg, AIMessage) and hasattr(msg, 'metadata') and msg.metadata:
+                        # 쿼리 승인 요청이나 포맷팅된 결과가 있으면 완료된 것
+                        if msg.metadata.get("query_approval_pending") or \
+                           (hasattr(msg, 'content') and msg.content and len(str(msg.content)) > 100 and ("총" in str(msg.content) or "건" in str(msg.content))):
+                            has_completed_workflow = True
+                            break
                 
-                clarification_response = later_human_messages[0].content
+                # 이전 워크플로우가 완료되었거나, 가장 최근 메시지가 명확화 질문과 멀리 떨어져 있으면 새 질문으로 처리
+                if has_completed_workflow or (last_human_index - clarification_msg_index > 3):
+                    # 새 질문인지 추가 확인: 명확화 응답이 아닌 새로운 질문인 경우
+                    is_new_question = len(clarification_response.strip()) > 15 or \
+                                     any(keyword in clarification_response for keyword in ["누구", "어떤", "몇", "언제", "어디", "왜", "어떻게", "가장", "최고", "최대", "기사", "처리한", "누구인가"])
+                    
+                    if is_new_question:
+                        if self.enable_logging:
+                            logger.info("=" * 80)
+                            logger.info("🆕 [NEW QUESTION DETECTED] 이전 워크플로우 완료 후 새 질문 감지")
+                            logger.info(f"새 질문: {clarification_response}")
+                            logger.info("이전 질문 컨텍스트 무시하고 새 질문만 사용")
+                            logger.info("=" * 80)
+                        # 새 질문만 HumanMessage로 추가
+                        new_question_message = HumanMessage(content=clarification_response)
+                        return {"messages": messages + [new_question_message]}
                 
-                # 사용자 응답이 충분한지 간단히 판단 (너무 짧거나 불명확한 경우만 재질문)
-                # "배송 완료 건수 기준으로", "수도권으로" 같은 응답은 충분함
-                if len(clarification_response.strip()) < 3:
-                    # 응답이 너무 짧으면 재질문
-                    if self.enable_logging:
-                        logger.info("⚠️  [INSUFFICIENT RESPONSE] 사용자 응답이 너무 짧음 - 재질문 필요")
-                else:
-                    # 원래 질문과 명확화 응답을 결합
-                    combined_question = f"{original_question} ({clarification_response})"
+                # 명확화 질문 이후의 첫 번째 HumanMessage 찾기 (명확화 응답일 가능성)
+                later_human_messages = [msg for i, msg in enumerate(messages) if isinstance(msg, HumanMessage) and i > clarification_msg_index]
+                
+                if later_human_messages:
+                    # 첫 번째 HumanMessage가 명확화 응답인지 확인
+                    first_response = later_human_messages[0].content
                     
-                    if self.enable_logging:
-                        logger.info("=" * 80)
-                        logger.info("✅ [CLARIFICATION COMPLETE] 명확화 응답 받음")
-                        logger.info(f"원래 질문: {original_question}")
-                        logger.info(f"명확화 응답: {clarification_response}")
-                        logger.info(f"결합된 질문: {combined_question}")
-                        logger.info("=" * 80)
+                    # 명확화 응답인지 새 질문인지 구분
+                    # 명확화 응답은 보통 짧고 간단하며, 새 질문은 더 구체적임
+                    is_clarification_response = len(first_response.strip()) <= 30 and \
+                                               not any(keyword in first_response for keyword in ["누구", "어떤", "몇", "언제", "어디", "왜", "어떻게", "가장", "최고", "최대", "기사", "처리한", "누구인가"])
                     
-                    # 결합된 질문을 새로운 HumanMessage로 추가하여 다음 단계로 진행
-                    combined_message = HumanMessage(content=combined_question)
-                    return {"messages": messages + [combined_message]}
+                    # 가장 최근 메시지가 첫 번째 응답과 다르면 새 질문
+                    if last_human_message.content != first_response:
+                        # 가장 최근 메시지가 새 질문
+                        if self.enable_logging:
+                            logger.info("=" * 80)
+                            logger.info("🆕 [NEW QUESTION DETECTED] 가장 최근 메시지가 새 질문으로 감지")
+                            logger.info(f"명확화 응답: {first_response}")
+                            logger.info(f"새 질문: {last_human_message.content}")
+                            logger.info("=" * 80)
+                        new_question_message = HumanMessage(content=last_human_message.content)
+                        return {"messages": messages + [new_question_message]}
+                    
+                    # 명확화 응답으로 처리
+                    clarification_response = first_response
+                    
+                    # 사용자 응답이 있음 - 원래 질문과 결합하여 완전한 질문 생성
+                    original_question = ""
+                    for msg in messages[:clarification_msg_index]:
+                        if isinstance(msg, HumanMessage):
+                            original_question = msg.content
+                            break
+                    
+                    # 사용자 응답이 충분한지 간단히 판단 (너무 짧거나 불명확한 경우만 재질문)
+                    # "배송 완료 건수 기준으로", "수도권으로" 같은 응답은 충분함
+                    if len(clarification_response.strip()) < 3:
+                        # 응답이 너무 짧으면 재질문
+                        if self.enable_logging:
+                            logger.info("⚠️  [INSUFFICIENT RESPONSE] 사용자 응답이 너무 짧음 - 재질문 필요")
+                    else:
+                        # 원래 질문과 명확화 응답을 결합
+                        combined_question = f"{original_question} ({clarification_response})"
+                        
+                        if self.enable_logging:
+                            logger.info("=" * 80)
+                            logger.info("✅ [CLARIFICATION COMPLETE] 명확화 응답 받음")
+                            logger.info(f"원래 질문: {original_question}")
+                            logger.info(f"명확화 응답: {clarification_response}")
+                            logger.info(f"결합된 질문: {combined_question}")
+                            logger.info("=" * 80)
+                        
+                        # 결합된 질문을 새로운 HumanMessage로 추가하여 다음 단계로 진행
+                        combined_message = HumanMessage(content=combined_question)
+                        return {"messages": messages + [combined_message]}
         
         # 명확화 질문이 아직 없거나 사용자 응답이 없는 경우 - 명확화 질문 생성
         # 이미 명확화 질문이 생성되었는지 확인 (중복 방지)
@@ -226,19 +296,62 @@ class QuestionAgent:
         user_question = ""
         original_question = ""
         
-        # 사용자 질문 추출 (명확화 응답이 있을 수 있음)
-        human_messages = [msg for msg in messages if isinstance(msg, HumanMessage)]
+        # 가장 최근 HumanMessage 찾기
+        last_human_message = None
+        for msg in reversed(messages):
+            if isinstance(msg, HumanMessage):
+                last_human_message = msg
+                break
         
-        if len(human_messages) >= 2:
-            # 명확화 응답이 있는 경우: 원래 질문 + 명확화 응답 결합
-            original_question = human_messages[0].content
-            clarification_response = human_messages[-1].content
-            # 원래 질문과 명확화 응답을 결합
-            user_question = f"{original_question} ({clarification_response})"
-        elif len(human_messages) == 1:
-            # 명확화 응답이 없는 경우: 원래 질문만 사용
-            user_question = human_messages[0].content
+        if not last_human_message:
+            return {"messages": messages}
+        
+        # 가장 최근 HumanMessage가 새 질문인지 확인
+        # 이전 명확화 질문 이후에 쿼리 실행이나 결과가 있으면 새 질문
+        user_question = last_human_message.content
+        
+        # 명확화 질문 찾기
+        clarification_msg_index = -1
+        for i, msg in enumerate(messages):
+            if isinstance(msg, AIMessage) and hasattr(msg, 'metadata') and msg.metadata:
+                if msg.metadata.get("needs_user_response"):
+                    clarification_msg_index = i
+                    break
+        
+        # 명확화 질문 이후에 완료된 워크플로우가 있는지 확인
+        is_new_question = False
+        if clarification_msg_index >= 0:
+            last_human_index = messages.index(last_human_message) if last_human_message in messages else -1
+            if last_human_index > clarification_msg_index:
+                # 명확화 질문과 최근 HumanMessage 사이에 완료된 워크플로우가 있는지 확인
+                for i in range(clarification_msg_index + 1, last_human_index):
+                    msg = messages[i]
+                    if hasattr(msg, 'name') and msg.name == 'sql_db_query':
+                        is_new_question = True
+                        break
+                    elif isinstance(msg, AIMessage) and hasattr(msg, 'metadata') and msg.metadata:
+                        if msg.metadata.get("query_approval_pending") or \
+                           (hasattr(msg, 'content') and msg.content and len(str(msg.content)) > 100 and ("총" in str(msg.content) or "건" in str(msg.content))):
+                            is_new_question = True
+                            break
+        
+        # 새 질문이면 그대로 사용
+        if is_new_question:
+            if self.enable_logging:
+                logger.info(f"🆕 [SPLIT QUESTION] 새 질문으로 처리: {user_question}")
             original_question = user_question
+        else:
+            # 명확화 응답이 있는 경우: 원래 질문 + 명확화 응답 결합
+            human_messages = [msg for msg in messages if isinstance(msg, HumanMessage)]
+            if len(human_messages) >= 2:
+                original_question = human_messages[0].content
+                clarification_response = human_messages[-1].content
+                # 원래 질문과 명확화 응답을 결합
+                user_question = f"{original_question} ({clarification_response})"
+            elif len(human_messages) == 1:
+                # 명확화 응답이 없는 경우: 원래 질문만 사용
+                user_question = human_messages[0].content
+                original_question = user_question
         
         if not user_question:
             return {"messages": messages}

@@ -103,6 +103,7 @@ class SQLNodes:
         messages = state["messages"]
         last_human_idx = -1
         last_query_result_idx = -1
+        last_approval_request_idx = -1
         
         # Find the last HumanMessage
         for i in range(len(messages) - 1, -1, -1):
@@ -125,9 +126,44 @@ class SQLNodes:
                         last_query_result_idx = i
                         break
         
+        # Find the last approval request (to detect if this is a new question vs approval response)
+        for i in range(len(messages) - 1, -1, -1):
+            msg = messages[i]
+            if isinstance(msg, AIMessage) and hasattr(msg, 'metadata') and msg.metadata:
+                if msg.metadata.get("query_approval_pending", False):
+                    last_approval_request_idx = i
+                    break
+        
         # Determine if we should use previous results or generate new query
         has_query_results = last_query_result_idx >= 0
         has_new_question_after_results = last_human_idx > last_query_result_idx if has_query_results else False
+        
+        # 새 질문인지 확인: 마지막 HumanMessage가 승인 요청 이후에 있고, 승인 키워드가 아닌 경우
+        is_new_question = False
+        if last_human_idx >= 0 and last_approval_request_idx >= 0:
+            last_human_msg = messages[last_human_idx]
+            if isinstance(last_human_msg, HumanMessage):
+                user_content = last_human_msg.content.lower().strip()
+                approval_keywords = ["승인", "실행", "예", "ok", "yes", "y", "확인", "좋아", "좋아요"]
+                rejection_keywords = ["거부", "취소", "아니오", "no", "n", "수정", "다시", "재생성"]
+                is_approval_response = any(keyword in user_content for keyword in approval_keywords)
+                is_rejection_response = any(keyword in user_content for keyword in rejection_keywords)
+                
+                # 승인/거부 키워드가 없고, 승인 요청 이후에 있으면 새 질문
+                if not is_approval_response and not is_rejection_response and last_human_idx > last_approval_request_idx:
+                    is_new_question = True
+                    if self.enable_logging:
+                        logger.info("🆕 [NEW QUESTION DETECTED] 승인 요청 이후 새 질문 감지")
+        
+        # 새 질문이면 이전 결과 무시하고 새 쿼리 생성
+        if is_new_question:
+            has_new_question_after_results = True
+            if self.enable_logging:
+                logger.info("=" * 80)
+                logger.info("🆕 [NEW QUESTION DETECTED] 승인 요청 이후 새 질문 감지")
+                logger.info(f"새 질문: {messages[last_human_idx].content if last_human_idx >= 0 else 'N/A'}")
+                logger.info("이전 승인 요청 컨텍스트 무시하고 새 쿼리 생성")
+                logger.info("=" * 80)
         
         # If we have query results AND the last question came BEFORE the results, format the answer
         if has_query_results and not has_new_question_after_results:
@@ -142,10 +178,74 @@ class SQLNodes:
             # New question or no previous results - generate new query
             if self.enable_logging and has_new_question_after_results:
                 logger.info("🆕 [NEW QUESTION DETECTED] 새로운 질문이 감지되었습니다. 새 쿼리를 생성합니다.")
+            
+            # 새 질문인 경우, 이전 승인 요청 관련 메시지를 필터링하여 최신 질문에 집중
+            messages_to_use = state["messages"]
+            if is_new_question and last_approval_request_idx >= 0:
+                # 승인 요청 이전의 메시지만 사용 (시스템 메시지 + 최신 질문)
+                # 단, 스키마 정보나 테이블 정보는 유지
+                # tool 메시지는 tool_calls가 있는 메시지와 함께 유지해야 함
+                filtered_messages = []
+                tool_calls_pending = {}  # tool_call_id -> tool_calls 메시지 인덱스
+                
+                for i, msg in enumerate(messages):
+                    # 승인 요청 이전의 메시지만 처리
+                    if i < last_approval_request_idx:
+                        # 스키마 정보나 테이블 정보는 유지
+                        if hasattr(msg, 'name') and msg.name in ['sql_db_schema', 'sql_db_list_tables']:
+                            filtered_messages.append(msg)
+                        # tool_calls가 있는 메시지는 유지하고 tool 메시지도 함께 유지
+                        elif hasattr(msg, 'tool_calls') and msg.tool_calls:
+                            filtered_messages.append(msg)
+                            # 이 메시지의 tool_calls에 대한 tool 응답을 찾기 위해 기록
+                            for tool_call in msg.tool_calls:
+                                tool_calls_pending[tool_call.get('id')] = len(filtered_messages) - 1
+                        # tool 메시지는 해당 tool_calls가 있는 경우만 유지
+                        elif hasattr(msg, 'tool_call_id') and msg.tool_call_id in tool_calls_pending:
+                            filtered_messages.append(msg)
+                        # 시스템 메시지나 HumanMessage는 유지
+                        elif isinstance(msg, dict) and msg.get("role") == "system":
+                            filtered_messages.append(msg)
+                        elif isinstance(msg, HumanMessage):
+                            filtered_messages.append(msg)
+                    # 마지막 HumanMessage (새 질문)는 포함
+                    elif i == last_human_idx:
+                        filtered_messages.append(msg)
+                
+                # 최소한 마지막 질문은 포함되어야 함
+                if last_human_idx >= 0:
+                    if not any(isinstance(m, HumanMessage) for m in filtered_messages):
+                        filtered_messages.append(messages[last_human_idx])
+                
+                # tool 메시지가 tool_calls 없이 남아있으면 제거
+                final_filtered = []
+                for i, msg in enumerate(filtered_messages):
+                    if hasattr(msg, 'tool_call_id'):
+                        # 이전에 tool_calls가 있는 메시지가 있는지 확인
+                        has_tool_calls_before = False
+                        for j in range(i):
+                            if hasattr(filtered_messages[j], 'tool_calls') and filtered_messages[j].tool_calls:
+                                for tc in filtered_messages[j].tool_calls:
+                                    if tc.get('id') == msg.tool_call_id:
+                                        has_tool_calls_before = True
+                                        break
+                                if has_tool_calls_before:
+                                    break
+                        if has_tool_calls_before:
+                            final_filtered.append(msg)
+                        # tool_calls가 없으면 제외
+                    else:
+                        final_filtered.append(msg)
+                
+                messages_to_use = final_filtered if final_filtered else [system_message, messages[last_human_idx]] if last_human_idx >= 0 else [system_message]
+                
+                if self.enable_logging:
+                    logger.info(f"🔍 [MESSAGE FILTERING] 새 질문 처리: {len(state['messages'])}개 → {len(messages_to_use)}개 메시지 사용")
+            
             if self.enable_logging:
                 logger.info("🤖 [LLM PROCESSING] LLM이 쿼리를 생성하는 중...")
             llm_with_tools = self.model.bind_tools([self.run_query_tool])
-            response = llm_with_tools.invoke([system_message] + state["messages"])
+            response = llm_with_tools.invoke([system_message] + messages_to_use)
         
         # 쿼리 생성 로깅 (기업 환경)
         if self.enable_logging:
