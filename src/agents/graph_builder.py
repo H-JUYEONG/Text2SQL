@@ -88,7 +88,29 @@ class GraphBuilder:
         )
         
         # SQL workflow edges
-        workflow.add_edge("list_tables", "call_get_schema")
+        # list_tables에서 스키마 검증 실패 시 END로 가도록 조건부 엣지 추가
+        def check_schema_validation(state: MessagesState) -> Literal[END, "call_get_schema"]:
+            """Check if schema validation failed in list_tables."""
+            messages = state["messages"]
+            # 마지막 메시지가 스키마 검증 오류 메시지인지 확인
+            if messages:
+                last_msg = messages[-1]
+                if hasattr(last_msg, 'content') and last_msg.content:
+                    content = str(last_msg.content)
+                    # 스키마 검증 실패 메시지 패턴 확인
+                    if "존재하지 않습니다" in content or "테이블은 데이터베이스에 존재하지 않습니다" in content:
+                        logger.info("🔍 [SCHEMA VALIDATION] 스키마 검증 실패로 워크플로우 종료")
+                        return END
+            return "call_get_schema"
+        
+        workflow.add_conditional_edges(
+            "list_tables",
+            check_schema_validation,
+            {
+                END: END,
+                "call_get_schema": "call_get_schema",
+            },
+        )
         workflow.add_edge("call_get_schema", "get_schema")
         workflow.add_edge("get_schema", "generate_query")
         workflow.add_conditional_edges(

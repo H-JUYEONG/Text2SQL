@@ -66,12 +66,23 @@ class Routing:
                 user_question = msg.content
                 break
         
+        # 조회 의도 키워드 체크 (코드 레벨에서 강제)
+        query_intent_keywords = ["조회", "보여줘", "알려줘", "보기", "목록", "리스트", "조회해줘", "보여줘", "알려줘", "찾아줘", "검색", "확인"]
+        if user_question:
+            question_lower = user_question.lower()
+            has_query_intent = any(keyword in question_lower for keyword in query_intent_keywords)
+            
+            # 조회 의도가 있으면 무조건 SQL로 라우팅 (REJECT 무시)
+            if has_query_intent:
+                logger.info("🔍 [ROUTING OVERRIDE] 조회 의도가 감지되어 SQL 워크플로우로 강제 라우팅")
+                return "sql_workflow"
+        
         # 라우팅 결정 추출
         selected_workflow = "sql_workflow"  # 기본값
         for msg in reversed(messages):
             if isinstance(msg, AIMessage) and msg.content:
                 decision = msg.content.strip().upper()
-                # REJECT 체크 (최우선)
+                # REJECT 체크 (조회 의도가 없을 때만)
                 if "REJECT" in decision:
                     selected_workflow = "reject_workflow"
                     break

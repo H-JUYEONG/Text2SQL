@@ -11,7 +11,7 @@ from langgraph.graph import MessagesState, END
 from langgraph.prebuilt import ToolNode
 
 from src.agents.prompts import get_generate_query_prompt, get_check_query_prompt, get_format_results_prompt, get_korean_prompt
-from src.agents.security import validate_query_security
+from src.agents.security import validate_query_security, validate_query_schema, validate_question_schema
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,25 @@ class SQLNodes:
     
     def list_tables(self, state: MessagesState):
         """List all available tables - predetermined tool call pattern."""
+        # 사용자 질문에서 테이블명 추출 및 스키마 검증
+        messages = state["messages"]
+        user_question = ""
+        for msg in reversed(messages):
+            if isinstance(msg, HumanMessage):
+                user_question = msg.content
+                break
+        
+        if user_question:
+            # 질문에서 언급한 테이블명이 실제 DB에 있는지 확인
+            is_valid, error_msg = validate_question_schema(user_question, self.db)
+            if not is_valid:
+                logger.warning(f"❌ [QUESTION SCHEMA VALIDATION] Question schema validation failed: {error_msg}")
+                error_response = AIMessage(
+                    content=f"죄송합니다. {error_msg} 현재 데이터베이스에 존재하는 테이블과 컬럼만 조회할 수 있습니다.",
+                    id=messages[-1].id if messages else None
+                )
+                return {"messages": [error_response]}
+        
         tool_call = {
             "name": "sql_db_list_tables",
             "args": {},
@@ -142,6 +161,17 @@ class SQLNodes:
                 logger.info("💬 [DIRECT RESPONSE] LLM이 직접 답변을 생성했습니다.")
                 logger.info(f"답변: {response.content[:200]}...")
         
+        # LLM이 직접 답변을 생성한 경우, 보안 검증 메시지인지 확인
+        # 보안 검증 메시지가 아닌 경우에만 스키마 검증을 수행할 수 있도록 함
+        if hasattr(response, 'content') and response.content and not hasattr(response, 'tool_calls'):
+            content = str(response.content)
+            security_rejection_msg = "죄송합니다. 데이터 수정, 삭제, 생성 등의 작업은 보안상의 이유로 허용되지 않습니다. 읽기 전용 조회만 가능합니다."
+            # 보안 검증 메시지가 아닌 경우, 스키마 검증을 위해 쿼리를 추출해볼 수 있음
+            # 하지만 이 경우는 LLM이 보안 검증을 수행한 것이므로 그대로 반환
+            if security_rejection_msg in content:
+                # 보안 검증 메시지인 경우 그대로 반환
+                return {"messages": [response]}
+        
         return {"messages": [response]}
     
     def check_query(self, state: MessagesState):
@@ -186,6 +216,7 @@ class SQLNodes:
                 tool_call["args"]["query"] = query_fixed
                 query = query_fixed
         
+        # 보안 검증
         is_valid, error_msg = validate_query_security(query)
         if not is_valid:
             logger.warning(f"❌ [SECURITY BLOCK] Query security validation failed: {error_msg}")
@@ -197,6 +228,20 @@ class SQLNodes:
             return {"messages": [error_response]}
         
         logger.info("✅ [SECURITY PASS] 쿼리 보안 검증 통과")
+        
+        # 스키마 검증
+        is_schema_valid, schema_error_msg = validate_query_schema(query, self.db)
+        if not is_schema_valid:
+            logger.warning(f"❌ [SCHEMA VALIDATION BLOCK] Query schema validation failed: {schema_error_msg}")
+            logger.warning(f"Blocked Query: {query}")
+            # 스키마 검증 실패 시 더 친절하고 구체적인 메시지 제공 (보안 검증 메시지와 명확히 구분)
+            error_response = AIMessage(
+                content=f"죄송합니다. {schema_error_msg} 현재 데이터베이스에 존재하는 테이블과 컬럼만 조회할 수 있습니다. 질문을 다시 정리해서 물어봐 주시겠어요?",
+                id=state["messages"][-1].id
+            )
+            return {"messages": [error_response]}
+        
+        logger.info("✅ [SCHEMA VALIDATION PASS] 쿼리 스키마 검증 통과")
         
         # Generate an artificial user message to check
         user_message = {"role": "user", "content": query}

@@ -13,7 +13,19 @@ Given an input question, create a syntactically correct {db_dialect} query to ru
 then look at the results of the query and return the answer in natural, conversational Korean.
 
 CRITICAL SECURITY CHECK - BEFORE ANYTHING ELSE (ABSOLUTE PRIORITY):
-- If the user asks to MODIFY, UPDATE, DELETE, INSERT, CREATE, DROP, ALTER, or CHANGE any data:
+- IMPORTANT: Only reject if the user explicitly asks to PERFORM a modification operation (action verbs)
+- Query intent keywords indicate READ-ONLY requests and should NOT be rejected:
+  * "조회", "보여줘", "알려줘", "보기", "목록", "리스트", "조회해줘", "보여줘", "알려줘", "찾아줘", "검색", "확인"
+  * "SELECT", "SHOW", "LIST", "VIEW", "QUERY", "GET", "FIND", "SEARCH"
+- Table names (like "customer", "orders", "deliveries") are NOT security keywords - they are just table names
+- Only check for COMPLETE WORDS as dangerous keywords, not partial matches
+  * Example: "customer" does NOT contain "UPDATE" - it's just a table name
+  * Example: "orders" does NOT contain "DELETE" - it's just a table name
+  * Example: "ustomer" does NOT contain "UPDATE" - it's just a table name (even if misspelled)
+
+- If the question contains query intent keywords (조회, 보여줘, 알려줘, etc.), it is a READ request and should be ALLOWED (generate SQL query)
+
+- Only reject if the user explicitly asks to PERFORM modification (action verbs, not table names):
   * STOP IMMEDIATELY - DO NOT proceed with any SQL generation
   * DO NOT generate any SQL query
   * DO NOT ask for clarification or more details
@@ -21,24 +33,30 @@ CRITICAL SECURITY CHECK - BEFORE ANYTHING ELSE (ABSOLUTE PRIORITY):
   * IMMEDIATELY respond with EXACTLY this message (no variations, no additional text):
     "죄송합니다. 데이터 수정, 삭제, 생성 등의 작업은 보안상의 이유로 허용되지 않습니다. 읽기 전용 조회만 가능합니다."
   
-  * Keywords that trigger immediate rejection (case-insensitive):
-    - Korean: "업데이트", "수정", "변경", "삭제", "추가", "생성", "만들어", "등록", "입력", "변경해", "수정해", "삭제해"
-    - English: "UPDATE", "INSERT", "DELETE", "CREATE", "DROP", "ALTER", "MODIFY", "CHANGE", "REMOVE"
+  * Dangerous SQL action keywords that trigger immediate rejection (case-insensitive, complete words only):
+    - Korean action verbs: "업데이트 해줘", "수정 해줘", "변경 해줘", "삭제 해줘", "추가 해줘", "생성 해줘", "만들어줘", "등록 해줘", "입력 해줘"
+    - English SQL action keywords: "UPDATE", "INSERT", "DELETE", "CREATE", "DROP", "ALTER", "MODIFY", "CHANGE", "REMOVE" (as action verbs, not in table names)
+    - NOTE: "SELECT" is NOT a dangerous keyword - SELECT queries are allowed for read-only access
   
   * Examples of requests to REJECT immediately (DO NOT generate SQL):
-    - "고객 정보 업데이트 해줘" → REJECT
-    - "업데이트 해줘" → REJECT
-    - "수정해줘" → REJECT
-    - "변경해줘" → REJECT
-    - "삭제해줘" → REJECT
-    - "추가해줘" → REJECT
-    - "만들어줘" → REJECT
-    - "생성해줘" → REJECT
-    - "주문 삭제", "테이블 생성", "데이터 변경" 등 → REJECT
+    - "고객 정보 업데이트 해줘" → REJECT (modification action: "업데이트 해줘")
+    - "업데이트 해줘" → REJECT (modification action)
+    - "수정해줘" → REJECT (modification action)
+    - "변경해줘" → REJECT (modification action)
+    - "삭제해줘" → REJECT (modification action)
+    - "추가해줘" → REJECT (modification action)
+    - "만들어줘" → REJECT (modification action)
+    - "생성해줘" → REJECT (modification action)
+    - "주문 삭제", "테이블 생성", "데이터 변경" 등 → REJECT (modification actions)
+  
+  * Examples of requests to ALLOW (query requests with table names):
+    - "customer 테이블 조회해줘" → ALLOW (query intent: "조회해줘", "customer" is just a table name)
+    - "ustomer 테이블 조회해줘" → ALLOW (query intent: "조회해줘", "ustomer" is just a table name, even if misspelled)
+    - "orders 테이블 보여줘" → ALLOW (query intent: "보여줘", "orders" is just a table name)
+    - "테이블 목록 보여줘" → ALLOW (query intent: "보여줘")
   
   * This check must happen BEFORE attempting to generate any SQL query
-  * This is a HARD SECURITY REQUIREMENT - there are NO exceptions
-  * Even if the user asks "어떤 정보를 수정해야 하는지 알려주세요" - STILL REJECT
+  * This is a HARD SECURITY REQUIREMENT - but ONLY reject actual modification requests, NOT query requests with table names
 
 CRITICAL: When you receive query results, you MUST interpret and format them as a natural language answer.
 - Query results may come as tuples, lists, or raw data - you MUST convert them to readable Korean text
@@ -104,6 +122,21 @@ Example for order list query:
              JOIN order_items oi ON o.order_id = oi.order_id
              JOIN deliveries d ON o.order_id = d.order_id
   * Notice: order_items is JOINed and product_name, unit_price are included
+
+CRITICAL TABLE NAME RULE - ABSOLUTELY MANDATORY:
+- You MUST use EXACT table names as they appear in the database schema
+- You MUST NOT modify, guess, or auto-correct table names mentioned by the user
+- If the user mentions a table name that does NOT exist in the schema, you MUST generate a query with that exact table name
+- DO NOT automatically convert table names (e.g., "customer" → "customers", "order" → "orders")
+- DO NOT use plural/singular variations unless the exact name exists in the schema
+- The schema validation system will catch invalid table names and provide appropriate error messages
+- Examples:
+  * If user says "customer 테이블 조회해줘" and schema has "customers" (not "customer"):
+    - WRONG: SELECT * FROM customers (auto-converting "customer" to "customers")
+    - CORRECT: SELECT * FROM customer (use exact name "customer" as mentioned, let schema validation catch the error)
+  * If user says "orders 테이블 조회해줘" and schema has "orders":
+    - CORRECT: SELECT * FROM orders (exact match, proceed normally)
+- This rule ensures that schema validation works correctly and users get accurate error messages
 
 GENERAL QUERY GENERATION PRINCIPLES:
 1. Understand the question intent first - is it asking for:
@@ -354,6 +387,7 @@ ABSOLUTELY MANDATORY: If the user asks for ANY data modification:
 - Keywords that trigger immediate rejection (DO NOT generate SQL):
   * "업데이트", "수정", "변경", "삭제", "추가", "생성", "만들어", "등록", "입력"
   * "UPDATE", "INSERT", "DELETE", "CREATE", "DROP", "ALTER"
+  * NOTE: "SELECT" is NOT a dangerous keyword - SELECT queries are allowed for read-only access
   * Any request containing these words must be rejected BEFORE SQL generation
 - This is a hard security requirement - there are NO exceptions
 """
@@ -364,6 +398,20 @@ def get_check_query_prompt(db_dialect: str) -> str:
     return f"""
 You are a SQL expert with a strong attention to detail and security.
 Double check the {db_dialect} query for common mistakes and security issues, including:
+
+CRITICAL TABLE NAME RULE - ABSOLUTELY MANDATORY:
+- You MUST NOT modify, guess, or auto-correct table names in the query
+- You MUST keep table names EXACTLY as they appear in the original query
+- DO NOT automatically convert table names (e.g., "customer" → "customers", "order" → "orders")
+- DO NOT use plural/singular variations unless the exact name exists in the schema
+- The schema validation system will catch invalid table names and provide appropriate error messages
+- If the query uses a table name that doesn't exist, keep it as-is - do NOT "fix" it
+- Examples:
+  * If query has "SELECT * FROM customer" and schema has "customers" (not "customer"):
+    - WRONG: Change to "SELECT * FROM customers" (auto-correcting)
+    - CORRECT: Keep "SELECT * FROM customer" (let schema validation catch the error)
+  * If query has "SELECT * FROM orders" and schema has "orders":
+    - CORRECT: Keep "SELECT * FROM orders" (exact match, no change needed)
 
 SQL SYNTAX AND LOGIC CHECKS:
 - Using NOT IN with NULL values (use NOT EXISTS or handle NULLs properly)
@@ -592,25 +640,44 @@ Your task is to analyze the user's question and decide which workflow to use: SQ
 ## CRITICAL SECURITY CHECK - FIRST PRIORITY:
 BEFORE routing to any workflow, check if the user is asking to MODIFY, UPDATE, DELETE, INSERT, CREATE, DROP, ALTER, or CHANGE any data OR documents.
 
-If the question contains ANY of these keywords or intent:
-- Data modification: "업데이트", "수정", "변경", "삭제", "추가", "생성", "만들어", "등록", "입력"
-- Document modification: "문서 생성", "문서 수정", "문서 삭제", "문서 작성", "문서 편집", "PDF 생성", "PDF 수정"
-- English: "UPDATE", "INSERT", "DELETE", "CREATE", "DROP", "ALTER", "MODIFY", "WRITE", "EDIT"
-- Any request to modify, change, delete, create, or update data or documents
+IMPORTANT RULES:
+- Only reject if the question explicitly asks to PERFORM a modification operation (action verbs)
+- Query intent keywords indicate READ-ONLY requests and should NOT be rejected:
+  * "조회", "보여줘", "알려줘", "보기", "목록", "리스트", "조회해줘", "보여줘", "알려줘", "찾아줘", "검색", "확인"
+  * "SELECT", "SHOW", "LIST", "VIEW", "QUERY", "GET", "FIND", "SEARCH"
+- Table names (like "customer", "orders", "deliveries") are NOT security keywords - they are just table names
+- Only check for COMPLETE WORDS as dangerous keywords, not partial matches
+  * Example: "customer" does NOT contain "UPDATE" - it's just a table name
+  * Example: "orders" does NOT contain "DELETE" - it's just a table name
 
-Then:
+If the question contains query intent keywords (조회, 보여줘, 알려줘, etc.), it is a READ request and should be ALLOWED (route to SQL, RAG, or DIRECT).
+
+Only reject if the question explicitly asks to PERFORM modification (action verbs, not table names):
+- Data modification actions: "업데이트 해줘", "수정 해줘", "변경 해줘", "삭제 해줘", "추가 해줘", "생성 해줘", "만들어줘", "등록 해줘", "입력 해줘"
+- Document modification actions: "문서 생성해줘", "문서 수정해줘", "문서 삭제해줘", "문서 작성해줘", "문서 편집해줘", "PDF 생성해줘", "PDF 수정해줘"
+- English SQL action keywords: "UPDATE", "INSERT", "DELETE", "CREATE", "DROP", "ALTER", "MODIFY", "WRITE", "EDIT" (as action verbs, not in table names)
+- NOTE: "SELECT" is NOT a dangerous keyword - SELECT queries are allowed for read-only access
+
+If the question asks to PERFORM modification (not query):
 - DO NOT route to SQL, RAG, or DIRECT
 - Return "REJECT" immediately
 - The system will handle the rejection message automatically
 
-Examples that MUST return "REJECT":
-- "고객 정보 업데이트 해줘" (data modification)
-- "주문 데이터 삭제해줘" (data modification)
-- "테이블 만들어줘" (data modification)
-- "데이터 수정해줘" (data modification)
-- "문서 생성해줘" (document modification)
-- "PDF 수정해줘" (document modification)
-- "문서 삭제해줘" (document modification)
+Examples that MUST return "REJECT" (modification actions):
+- "고객 정보 업데이트 해줘" (modification action: "업데이트 해줘")
+- "주문 데이터 삭제해줘" (modification action: "삭제해줘")
+- "테이블 만들어줘" (modification action: "만들어줘")
+- "데이터 수정해줘" (modification action: "수정해줘")
+- "문서 생성해줘" (modification action: "생성해줘")
+- "PDF 수정해줘" (modification action: "수정해줘")
+- "문서 삭제해줘" (modification action: "삭제해줘")
+
+Examples that MUST be ALLOWED (query requests with table names):
+- "customer 테이블 조회해줘" → SQL (query intent: "조회해줘", "customer" is just a table name)
+- "ustomer 테이블 조회해줘" → SQL (query intent: "조회해줘", "ustomer" is just a table name, even if misspelled)
+- "orders 테이블 보여줘" → SQL (query intent: "보여줘", "orders" is just a table name)
+- "테이블 목록 보여줘" → SQL (query intent: "보여줘")
+- "고객 정보 알려줘" → SQL (query intent: "알려줘")
 
 ## ROUTING RULES:
 
