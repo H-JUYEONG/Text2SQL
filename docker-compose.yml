@@ -26,23 +26,20 @@ services:
       - "8000:8000"
     volumes:
       - ./data:/app/data
-    # .env 파일에서 환경 변수 자동 로드 (선택사항 - 파일이 없어도 기본값 사용)
-    # 상대 경로: 프로젝트 루트의 .env 파일 사용 (로컬/EC2 모두 동일하게 작동)
+    # 프로젝트 루트 .env 자동 적용
     env_file:
       - .env
     environment:
       - PYTHONUNBUFFERED=1
-      # Docker Compose 환경에서는 postgres 서비스 이름을 호스트로 사용
-      # .env 파일의 DATABASE_URI가 있으면 그것을 사용, 없으면 기본값 사용
+      # DATABASE_URI가 .env에 있으면 자동 적용, 없으면 기본값
       - DATABASE_URI=${DATABASE_URI:-postgresql+psycopg2://text2sql:text2sql@postgres:5432/logistics}
-      # 체크포인터용 DB URI (기본값: 메인 DB와 동일)
       - CHECKPOINT_DB_URI=${CHECKPOINT_DB_URI:-postgresql+psycopg2://text2sql:text2sql@postgres:5432/logistics}
-      # 다른 환경 변수들도 필요시 여기에 추가
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
       - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-8000}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - USE_DB_CHECKPOINTER=${USE_DB_CHECKPOINTER:-true}
+      - ADMIN_API_KEY=${ADMIN_API_KEY}  # 새로 추가된 키
     depends_on:
       postgres:
         condition: service_healthy
@@ -56,4 +53,3 @@ services:
 
 volumes:
   postgres_data:
-
