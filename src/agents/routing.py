@@ -6,7 +6,7 @@ sys.dont_write_bytecode = True
 
 import logging
 from langchain_core.messages import HumanMessage, AIMessage
-from langgraph.graph import MessagesState
+from langgraph.graph import MessagesState, END
 
 from src.agents.prompts import get_routing_prompt
 
