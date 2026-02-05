@@ -26,7 +26,8 @@ uvicorn[standard]>=0.30.0
 psycopg2-binary>=2.9.0,<3.0.0
 
 # 체크포인터 (선택사항 - DB 기반 체크포인터 사용 시)
-# 최신 버전: 3.0.4 (psycopg 3.x 사용)
-# psycopg2-binary와 호환되는 버전 사용
+# 버전 호환성: langgraph-checkpoint-postgres 3.0.4는 langgraph-checkpoint 3.x와 호환
+# langgraph-checkpoint 4.0.0과 호환성 문제로 인해 3.x로 고정
+langgraph-checkpoint>=1.0.0,<4.0.0
 langgraph-checkpoint-postgres>=1.0.0,<4.0.0
 
