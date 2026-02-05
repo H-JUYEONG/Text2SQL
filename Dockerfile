@@ -1,5 +1,5 @@
 # Python 3.11 기반 이미지
-FROM python:3.11-slim
+FROM python:3.11
 
 # 작업 디렉토리 설정
 WORKDIR /app
@@ -9,7 +9,8 @@ RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# requirements.txt 복사 및 의존성 설치
+# pip 업그레이드 및 requirements 설치
+RUN pip install --upgrade pip
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
