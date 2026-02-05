@@ -68,24 +68,26 @@ class SQLNodes:
         return {"messages": [tool_call_message, tool_message, response]}
     
     def call_get_schema(self, state: MessagesState):
-        """Call the get_schema tool deterministically (no LLM tool_calls)."""
+        """Call the get_schema tool deterministically (no LLM tool_calls).
+        
+        Note: SQLDatabaseToolkit의 `sql_db_schema` 도구는
+        `{"table_names": [...]}`
+        형태의 입력을 기대하므로, 전체 스키마를 위해 빈 리스트를 전달합니다.
+        """
         messages = state["messages"]
 
-        # 도구 호출 정의 (list_tables와 동일 패턴)
-        tool_call = {
-            "name": "sql_db_schema",
-            "args": {},
-            "id": "get_schema_001",
-            "type": "tool_call",
-        }
-        tool_call_message = AIMessage(content="", tool_calls=[tool_call])
-
-        # 실제 스키마 조회 도구 호출
-        tool_message = self.get_schema_tool.invoke(tool_call)
+        # 실제 스키마 조회 도구 호출 (모든 테이블 대상)
+        try:
+            tool_message = self.get_schema_tool.invoke({"table_names": []})
+        except Exception as e:
+            if self.enable_logging:
+                logger.warning(f"⚠️ [GET_SCHEMA] 스키마 조회 중 오류: {e}")
+            # 스키마 조회에 실패해도 워크플로우는 계속 진행
+            return {"messages": messages}
 
         # 내부적으로는 스키마 정보를 활용하지만,
         # 사용자에게는 그대로 노출하지 않고 generate_query 단계에서만 사용
-        return {"messages": messages + [tool_call_message, tool_message]}
+        return {"messages": messages + [tool_message]}
     
     def generate_query(self, state: MessagesState):
         """Generate SQL query - following Custom SQL Agent pattern."""
