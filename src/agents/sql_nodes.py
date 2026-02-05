@@ -68,10 +68,24 @@ class SQLNodes:
         return {"messages": [tool_call_message, tool_message, response]}
     
     def call_get_schema(self, state: MessagesState):
-        """Call the get schema tool - force tool call pattern."""
-        llm_with_tools = self.model.bind_tools([self.get_schema_tool], tool_choice="any")
-        response = llm_with_tools.invoke(state["messages"])
-        return {"messages": [response]}
+        """Call the get_schema tool deterministically (no LLM tool_calls)."""
+        messages = state["messages"]
+
+        # 도구 호출 정의 (list_tables와 동일 패턴)
+        tool_call = {
+            "name": "sql_db_schema",
+            "args": {},
+            "id": "get_schema_001",
+            "type": "tool_call",
+        }
+        tool_call_message = AIMessage(content="", tool_calls=[tool_call])
+
+        # 실제 스키마 조회 도구 호출
+        tool_message = self.get_schema_tool.invoke(tool_call)
+
+        # 내부적으로는 스키마 정보를 활용하지만,
+        # 사용자에게는 그대로 노출하지 않고 generate_query 단계에서만 사용
+        return {"messages": messages + [tool_call_message, tool_message]}
     
     def generate_query(self, state: MessagesState):
         """Generate SQL query - following Custom SQL Agent pattern."""
