@@ -176,10 +176,13 @@ class LogisticsAgent:
         
         return retrieve_logistics_context
     
-    def invoke(self, query: str, config: dict = None, thread_id: str = "default"):
+    def invoke(self, query: str, config: dict = None, thread_id: str = "default", is_admin: bool = False):
         """Invoke the agent with a query and thread_id for conversation memory."""
         config = config or {}
-        config["configurable"] = {"thread_id": thread_id}
+        config["configurable"] = {
+            "thread_id": thread_id,
+            "is_admin": bool(is_admin),
+        }
         
         result = self.graph.invoke(
             {"messages": [HumanMessage(content=query)]},

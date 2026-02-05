@@ -38,6 +38,15 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 
+# Admin / Security (no-login authorization signals)
+# 관리자 권한 판별용 키 (요청 헤더 X-ADMIN-KEY 와 비교)
+ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "")
+# 관리자 허용 IP allowlist (쉼표로 구분)
+# 예: "127.0.0.1,112.145.77.209"
+ADMIN_IP_ALLOWLIST = [
+    ip.strip() for ip in os.getenv("ADMIN_IP_ALLOWLIST", "").split(",") if ip.strip()
+]
+
 # Enterprise Configuration
 MAX_QUERY_RESULTS = int(os.getenv("MAX_QUERY_RESULTS", "100"))  # 최대 결과 수 제한
 SMALL_RESULT_THRESHOLD = int(os.getenv("SMALL_RESULT_THRESHOLD", "50"))  # 이 개수 이하면 LIMIT 없이 전체 조회

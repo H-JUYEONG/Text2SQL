@@ -5,7 +5,7 @@ import sys
 # 바이트코드(.pyc) 파일 생성 방지
 sys.dont_write_bytecode = True
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,7 +13,7 @@ from pydantic import BaseModel
 import os
 from src.logistics_agent import LogisticsAgent
 from scripts.index_documents import load_documents, create_vector_store
-from src.config import DATABASE_URI
+from src.config import DATABASE_URI, ADMIN_API_KEY, ADMIN_IP_ALLOWLIST
 
 app = FastAPI(title="물류 데이터 분석 에이전트")
 
@@ -87,7 +87,7 @@ async def index():
 
 
 @app.post("/api/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, http_request: Request):
     """채팅 API 엔드포인트 - 기업 환경 고려"""
     import logging
     logger = logging.getLogger(__name__)
@@ -108,10 +108,47 @@ async def chat(request: ChatRequest):
         
         # 사용자 요청 로깅 (기업 환경)
         logger.info(f"User query received: {message[:100]}...")
+
+        # --- No-login authorization signal (admin key or IP allowlist) ---
+        # 1) Header-based admin key
+        header_key = http_request.headers.get("x-admin-key", "")
+        is_admin_by_key = bool(ADMIN_API_KEY) and header_key == ADMIN_API_KEY
+
+        # 2) IP allowlist (supports X-Forwarded-For)
+        forwarded_for = http_request.headers.get("x-forwarded-for", "")
+        client_ip = ""
+        if forwarded_for:
+            # X-Forwarded-For: client, proxy1, proxy2
+            client_ip = forwarded_for.split(",")[0].strip()
+        elif http_request.client:
+            client_ip = http_request.client.host
+
+        is_admin_by_ip = bool(client_ip) and client_ip in (ADMIN_IP_ALLOWLIST or [])
+        is_admin = bool(is_admin_by_key or is_admin_by_ip)
+
+        # --- Global schema disclosure guard (block before graph runs) ---
+        # Even if routing chooses DIRECT/RAG, we don't want to disclose schema/table specs to non-admins.
+        schema_keywords = [
+            "테이블", "table", "스키마", "schema", "명세", "컬럼", "column", "필드", "field",
+            "테이블 목록", "전체 테이블", "모든 테이블", "테이블 구조", "erd", "관계도",
+            "create table", "ddl", "describe", "desc ", "information_schema",
+        ]
+        message_lower = (message or "").lower()
+        is_schema_request = any(k.lower() in message_lower for k in schema_keywords)
+        if is_schema_request and not is_admin:
+            return ChatResponse(
+                response=(
+                    "보안상의 이유로 테이블/컬럼 명세(스키마) 및 테이블 목록은 관리자만 조회할 수 있습니다.\n"
+                    "필요한 데이터 결과(예: '미배송 주문 목록', '지역별 배송 건수')를 말씀해주시면 조회로 도와드릴게요.\n\n"
+                    "관리자라면 우측 상단 '관리자 키 설정'에 키 값을 입력한 뒤 다시 시도해주세요."
+                ),
+                needs_user_response=False,
+                workflow_paused=False,
+            )
         
         # 에이전트 호출 (thread_id를 사용하여 대화 히스토리 유지)
         # LangGraph의 checkpointer가 thread_id별로 대화 히스토리를 자동으로 관리합니다
-        result = agent.invoke(message, thread_id=DEFAULT_THREAD_ID)
+        result = agent.invoke(message, thread_id=DEFAULT_THREAD_ID, is_admin=is_admin)
         
         # 마지막 메시지에서 답변 추출
         needs_user_response = False

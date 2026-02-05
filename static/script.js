@@ -3,6 +3,40 @@ const chatMessages = document.getElementById('chatMessages');
 const userInput = document.getElementById('userInput');
 const sendButton = document.getElementById('sendButton');
 
+// Admin key (no-login): save once in browser and send as header automatically.
+const adminKeyBtn = document.getElementById('adminKeyBtn');
+const adminKeyStatus = document.getElementById('adminKeyStatus');
+const ADMIN_KEY_STORAGE = 'text2sql_admin_key';
+
+function getAdminKey() {
+    try {
+        return localStorage.getItem(ADMIN_KEY_STORAGE) || '';
+    } catch (e) {
+        return '';
+    }
+}
+
+function setAdminKey(key) {
+    try {
+        if (key) localStorage.setItem(ADMIN_KEY_STORAGE, key);
+        else localStorage.removeItem(ADMIN_KEY_STORAGE);
+    } catch (e) {
+        // ignore
+    }
+    renderAdminKeyStatus();
+}
+
+function renderAdminKeyStatus() {
+    if (!adminKeyStatus) return;
+    const key = getAdminKey();
+    adminKeyStatus.textContent = key ? 'ADMIN: ON' : 'ADMIN: OFF';
+}
+
+function getAuthHeaders() {
+    const key = getAdminKey();
+    return key ? { 'X-ADMIN-KEY': key } : {};
+}
+
 // Set welcome message time
 document.getElementById('welcomeTime').textContent = getCurrentTime();
 
@@ -22,6 +56,24 @@ userInput.addEventListener('keydown', function(e) {
 
 // Send button click
 sendButton.addEventListener('click', sendMessage);
+
+// Admin key button click (prompt once)
+if (adminKeyBtn) {
+    adminKeyBtn.addEventListener('click', () => {
+        const current = getAdminKey();
+        const input = window.prompt(
+            '관리자 키를 입력하세요.\\n\\n- 설정 시: 스키마/테이블 명세 조회 권한이 활성화됩니다.\\n- 비우고 확인하면: 키가 제거됩니다.',
+            current
+        );
+        if (input === null) return; // cancelled
+        const key = (input || '').trim();
+        setAdminKey(key);
+        addMessage(key ? '[로컬 설정] 관리자 키가 설정되었습니다. 이제부터 요청에 X-ADMIN-KEY 헤더가 자동 포함됩니다.'
+                       : '[로컬 설정] 관리자 키가 제거되었습니다.',
+                   'bot');
+    });
+}
+renderAdminKeyStatus();
 
 // Get current time
 function getCurrentTime() {
@@ -149,6 +201,7 @@ async function sendApprovalMessage(message) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                ...getAuthHeaders(),
             },
             body: JSON.stringify({ message: message })
         });
@@ -251,6 +304,7 @@ async function sendMessage() {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                ...getAuthHeaders(),
             },
             body: JSON.stringify({ message: messageToSend })
         });
