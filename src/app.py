@@ -12,7 +12,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
 from src.logistics_agent import LogisticsAgent
-from scripts.create_sample_db import create_sample_database
 from scripts.index_documents import load_documents, create_vector_store
 from src.config import DATABASE_URI
 

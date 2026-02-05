@@ -1,8 +1,6 @@
 # Text2SQL + RAG Agent
 
-물류 도메인을 위한 하이브리드 질의응답 시스템. 자연어 질문을 분석하여 SQL(데이터베이스 조회) 또는 RAG(문서 검색)로 자동 라우팅합니다.
-
-> 특정 도메인에 집중하여 Text2SQL 기술을 검증하기 위해 물류 도메인을 선택했습니다.
+물류 도메인을 위한 하이브리드 질의응답 시스템. 자연어 질문을 분석하여 SQL(데이터베이스 조회) 또는 RAG(문서 검색)로 자동 라우팅합니다. (특정 도메인에 집중하여 Text2SQL 기술을 검증하기 위해 물류 도메인을 선택했습니다.)
 
 ## 🎯 핵심 기능
 
@@ -64,8 +62,8 @@ Text2SQL/
 - **LangGraph 1.0+** - AI 에이전트 워크플로우 오케스트레이션
 - **LangChain 1.2+** - LLM 통합 및 SQL/RAG 에이전트
 - **PostgreSQL** - 대상 데이터베이스
-- **psycopg[binary]** - PostgreSQL 드라이버
-- **langgraph-checkpoint-postgres** - HITL 상태 저장 (사용자 응답 대기 중 워크플로우 상태 유지)
+- **InMemoryVectorStore** - RAG 문서 검색용 벡터 스토어 (메모리 기반)
+- **langgraph-checkpoint-postgres** - HITL 상태 저장 (사용자 응답 대기 중 워크플로우 상태 유지, PostgreSQL 기반)
 
 ### Infrastructure
 - **Docker** - 컨테이너화 (이미지 빌드 및 실행)
@@ -74,34 +72,18 @@ Text2SQL/
   - `Dockerfile`로 앱 이미지 빌드 → `docker-compose.yml`로 서비스 실행
 - **GitHub Actions** - CI/CD 파이프라인 (자동 빌드 및 배포)
 
-## 🔄 CI/CD
+## ⚙️ 환경 설정
 
-### GitHub Actions
+프로젝트 루트에 `.env` 파일을 생성하여 환경 변수 설정
 
-자동 빌드 및 배포를 위한 GitHub Actions 워크플로우가 설정되어 있습니다:
-
-- **트리거**: `main` 또는 `master` 브랜치에 push 시 자동 실행
-- **작업**:
-  1. 코드 체크아웃
-  2. Secrets 검증 (EC2 접속 정보)
-  3. EC2 서버에 SSH 연결
-  4. 코드 pull 및 Docker 이미지 빌드
-  5. docker-compose로 서비스 재시작
-  6. 헬스 체크
-
-### 워크플로우 파일
-
-`.github/workflows/deploy-ec2.yml` 파일에서 CI/CD 설정을 관리합니다.
-
-### 필요한 GitHub Secrets
-
-EC2 배포를 위해 다음 Secrets를 설정해야 합니다:
-
-- `EC2_HOST`: EC2 인스턴스 IP 주소 또는 도메인
-- `EC2_USERNAME`: EC2 사용자명 (예: `ubuntu`, `ec2-user`)
-- `EC2_SSH_KEY`: EC2 SSH 개인 키 (전체 내용)
-
-**설정 방법**: GitHub 저장소 → Settings → Secrets and variables → Actions → New repository secret
+```bash
+# .env 파일 생성
+cat > .env << EOF
+OPENAI_API_KEY="your_openai_api_key_here"
+DATABASE_URI="postgresql+psycopg2://text2sql:text2sql@postgres:5432/logistics"
+USE_DB_CHECKPOINTER="true"
+EOF
+```
 
 ## 📝 사용 예시
 
@@ -130,15 +112,14 @@ EC2 배포를 위해 다음 Secrets를 설정해야 합니다:
 ## 🔒 보안
 
 - **읽기 전용**: SELECT 쿼리만 허용
-- **스키마 검증**: 존재하지 않는 테이블/컬럼 참조 차단
+- **스키마 검증**: 잘못된 테이블/컬럼 참조 방지
 - **쿼리 승인**: 기업 환경에서 DB 손상 방지
 - **타임아웃**: 쿼리 실행 시간 제한
 
 ## 📚 참고 자료
 
-- [LangChain RAG agent](https://docs.langchain.com/oss/python/langchain/rag/)
-- [LangChain SQL agent](https://docs.langchain.com/oss/python/langchain/sql-agent/)
 - [LangGraph Custom RAG agent](https://docs.langchain.com/oss/python/langgraph/agentic-rag/)
 - [LangGraph Custom SQL agent](https://docs.langchain.com/oss/python/langgraph/sql-agent/)
 - [Document loaders](https://docs.langchain.com/oss/python/integrations/document_loaders/)
-- [Vector stores](https://docs.langchain.com/oss/python/integrations/vectorstores#in-memory/)  
+- [Vector stores](https://docs.langchain.com/oss/python/integrations/vectorstores#in-memory/)
+- [Memory](https://docs.langchain.com/oss/python/langgraph/add-memory#use-in-production/)
