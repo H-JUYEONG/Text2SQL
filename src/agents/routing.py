@@ -206,6 +206,9 @@ class Routing:
                 if "REJECT" in decision:
                     selected_workflow = "reject_workflow"
                     break
+                elif "OUT_OF_SCOPE" in decision:
+                    selected_workflow = "out_of_scope_workflow"
+                    break
                 elif "UNCERTAIN" in decision:
                     # 모호한 경우 HITL로 사용자에게 질문
                     selected_workflow = "request_routing_clarification"
@@ -226,6 +229,7 @@ class Routing:
             "rag_workflow": "RAG 워크플로우 (문서 검색)",
             "direct_response": "DIRECT 응답 (직접 답변)",
             "reject_workflow": "REJECT 워크플로우 (보안 거절)",
+            "out_of_scope_workflow": "OUT_OF_SCOPE 응답 (범위 밖 질문 고정 멘트)",
             "request_routing_clarification": "라우팅 클리어리피케이션 요청 (HITL)"
         }.get(selected_workflow, selected_workflow)
         

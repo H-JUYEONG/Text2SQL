@@ -71,6 +71,21 @@ class GraphBuilder:
         
         workflow.add_node("direct_response", direct_response)
         
+        # Out-of-scope Response (domain mismatch)
+        def out_of_scope_response(state: MessagesState):
+            """Reply with a fixed message when the question is outside the agent scope."""
+            from langchain_core.messages import AIMessage
+            msg = AIMessage(
+                content=(
+                    "죄송합니다. 해당 질문은 현재 물류 데이터/물류 운영 문서/물류 DB 조회 범위를 벗어나 "
+                    "정보를 제공할 수 없습니다.\n\n"
+                    "물류 관련 질문으로 다시 질문해 주세요."
+                )
+            )
+            return {"messages": [msg]}
+
+        workflow.add_node("out_of_scope_response", out_of_scope_response)
+
         # Reject Response (for security violations)
         def reject_response(state: MessagesState):
             """Reject data modification requests."""
@@ -115,6 +130,7 @@ class GraphBuilder:
                 "sql_workflow": "list_tables",
                 "rag_workflow": "generate_query_or_respond",
                 "direct_response": "direct_response",
+                "out_of_scope_workflow": "out_of_scope_response",
                 "reject_workflow": "reject_response",
                 "process_query_approval": "process_query_approval",  # HITL: 쿼리 승인 응답 처리
                 "request_routing_clarification": "request_routing_clarification",  # HITL: 라우팅 클리어리피케이션 요청
@@ -129,6 +145,7 @@ class GraphBuilder:
                 "sql_workflow": "list_tables",
                 "rag_workflow": "generate_query_or_respond",
                 "direct_response": "direct_response",
+                "out_of_scope_workflow": "out_of_scope_response",
                 "reject_workflow": "reject_response",
                 "request_routing_clarification": "request_routing_clarification",  # 응답이 명확하지 않으면 다시 요청
                 END: END,  # 사용자 응답 대기
